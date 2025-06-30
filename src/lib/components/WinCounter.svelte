@@ -60,7 +60,7 @@
     <!-- Center Group (Icon and Number) -->
     <div class="flex-grow flex items-center justify-center space-x-2">
       <!-- Icon container to constrain size -->
-      <div class="w-8 h-8 flex items-center justify-center">
+      <div class="w-6 h-6 flex items-center justify-center">
         <img 
           src="/assets/ui/app_crown.png" 
           alt="Crown Icon" 
