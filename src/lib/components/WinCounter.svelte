@@ -1,24 +1,31 @@
-<!-- FILE: src/lib/components/WinCounter.svelte -->
+<!-- ================================================================= -->
+<!-- FILE: src/lib/components/WinCounter.svelte                        -->
+<!-- ACTION: Replace the entire content of this file.                -->
+<!-- PURPOSE: Significantly reduce the size of the crown icon.       -->
+<!-- ================================================================= -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import { listen, type EventCallback } from '@tauri-apps/api/event';
+  import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
   let winCount: number = 0;
-  let unlistenIncrement: Function | null = null;
-  let unlistenDecrement: Function | null = null;
+  let unlistenIncrement: UnlistenFn | null = null;
+  let unlistenDecrement: UnlistenFn | null = null;
 
   onMount(async () => {
     try {
       winCount = await invoke('get_initial_win_count');
 
-      const incrementListener: EventCallback<null> = () => handleIncrement();
-      unlistenIncrement = await listen('hotkey-increment', incrementListener);
+      unlistenIncrement = await listen("hotkey-increment", () => {
+        handleIncrement();
+      });
 
-      const decrementListener: EventCallback<null> = () => handleDecrement();
-      unlistenDecrement = await listen('hotkey-decrement', decrementListener);
+      unlistenDecrement = await listen("hotkey-decrement", () => {
+        handleDecrement();
+      });
+
     } catch (e) {
-      console.error("Error setting up WinCounter:", e);
+      console.error("Error setting up WinCounter listeners:", e);
     }
   });
 
@@ -44,11 +51,6 @@
   }
 </script>
 
-<!-- 
-  Layout has been completely reworked for robustness.
-  - Uses simple and predictable flexbox.
-  - A dedicated container now constrains the icon's size.
--->
 <div class="w-full max-w-xs p-4 bg-black/30 rounded-xl border border-cyan-400/50">
   <div class="flex items-center justify-between">
     
@@ -57,10 +59,8 @@
 
     <!-- Center Group (Icon and Number) -->
     <div class="flex-grow flex items-center justify-center space-x-2">
-      <!-- Icon container to constrain size - ขนาดเล็กสุดๆ -->
-      <!-- ขนาดปัจจุบัน: w-1 h-1 (4px) - เล็กสุดๆ -->
-      <!-- ตัวเลือกอื่น: w-2 h-2 (8px), w-4 h-4 (16px), w-6 h-6 (24px), w-8 h-8 (32px) -->
-      <div class="w-1 h-1 flex items-center justify-center">
+      <!-- Icon container to constrain size -->
+      <div class="w-8 h-8 flex items-center justify-center">
         <img 
           src="/assets/ui/app_crown.png" 
           alt="Crown Icon" 
