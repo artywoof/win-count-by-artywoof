@@ -6,9 +6,10 @@
 </script>
 
 <!-- 
-  data-tauri-drag-region คือส่วนสำคัญที่ทำให้เราสามารถคลิกค้างเพื่อลากหน้าต่างที่ไม่มีกรอบได้
+  - data-tauri-drag-region ทำให้ลากหน้าต่างได้
+  - เพิ่ม bg-gray-900/50 และ backdrop-blur-lg เพื่อสร้างเอฟเฟกต์กระจกฝ้า
 -->
-<main data-tauri-drag-region class="relative flex flex-col h-screen w-full bg-transparent overflow-hidden">
+<main data-tauri-drag-region class="relative flex flex-col h-screen w-full bg-gray-900/50 backdrop-blur-lg rounded-2xl overflow-hidden">
   
   <!-- กรอบแอปดีไซน์ Cyberpunk -->
   <div class="absolute inset-0 border-2 border-cyan-400 rounded-2xl shadow-[0_0_20px_rgba(0,255,255,0.5)] pointer-events-none"></div>
