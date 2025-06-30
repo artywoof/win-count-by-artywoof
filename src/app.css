@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'MiSansThaiVF';
+  src: url('/src/assets/fonts/MiSansThaiVF.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+/* Frameless window styles */
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  background: transparent !important;
+  font-family: 'MiSansThaiVF', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  -webkit-app-region: drag;
+}
+
+/* Exclude interactive elements from drag */
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Remove scrollbars globally */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}

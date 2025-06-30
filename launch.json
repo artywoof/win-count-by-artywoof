@@ -1,0 +1,37 @@
+{
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Main Index",
+            "program": "${workspaceFolder}/index.ts",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "bun"
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch AI Sync API",
+            "program": "${workspaceFolder}/ai-sync-api/index.ts",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "bun"
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch AI Sync Server",
+            "program": "${workspaceFolder}/ai-sync-api/server.ts",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "bun"
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch SvelteKit Dev",
+            "program": "${workspaceFolder}/node_modules/@sveltejs/kit/src/exports/vite/dev/index.js",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "bun",
+            "args": ["dev"]
+        }
+    ]
+}

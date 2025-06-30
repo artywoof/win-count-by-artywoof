@@ -1,0 +1,11 @@
+{
+  "presetName": "Default",
+  "win": 0,
+  "goal": 10,
+  "showCrown": true,
+  "showGoal": true,
+  "hotkeys": {
+    "increment": "Alt+=",
+    "decrement": "Alt+-"
+  }
+}
