@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, Arc};
 use std::thread;
-use tauri::{State, Emitter};
+use tauri::{State, Emitter, Manager, menu::{MenuBuilder, MenuItemBuilder}};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use tokio::sync::broadcast;
 use futures_util::{StreamExt, SinkExt};
@@ -107,6 +107,12 @@ fn minimize_app(window: tauri::Window) {
 #[tauri::command]
 fn hide_to_tray(window: tauri::Window) {
     let _ = window.hide();
+}
+
+#[tauri::command]
+fn show_from_tray(window: tauri::Window) {
+    let _ = window.show();
+    let _ = window.set_focus();
 }
 
 // Helper function for win state mutation and event emitting
@@ -483,7 +489,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![greet, get_win_state, set_win_state, minimize_app, hide_to_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds])
+        .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![greet, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();
@@ -534,6 +541,38 @@ pub fn run() {
                     Ok(_) => println!("✅ Global shortcuts registered successfully"),
                     Err(e) => println!("❌ Failed to register global shortcuts: {:?}", e),
                 }
+                
+                // Setup System Tray
+                println!("🎯 Setting up system tray...");
+                let show_menu_item = MenuItemBuilder::with_id("show", "Show Win Counter").build(app)?;
+                let quit_menu_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+                let tray_menu = MenuBuilder::new(app)
+                    .items(&[&show_menu_item, &quit_menu_item])
+                    .build()?;
+                
+                let tray = app.tray_by_id("main").unwrap();
+                tray.set_menu(Some(tray_menu))?;
+                tray.on_menu_event({
+                    let _app_handle = app_handle.clone();
+                    move |app, event| {
+                        match event.id.as_ref() {
+                            "show" => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                            "quit" => {
+                                app.exit(0);
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+                
+                println!("✅ System tray setup completed");
+                
+                println!("✅ Application setup completed");
                 
                 Ok(())
             }
