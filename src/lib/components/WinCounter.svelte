@@ -57,8 +57,10 @@
 
     <!-- Center Group (Icon and Number) -->
     <div class="flex-grow flex items-center justify-center space-x-2">
-      <!-- Icon container to constrain size -->
-      <div class="w-10 h-10 flex items-center justify-center">
+      <!-- Icon container to constrain size - ขนาดเล็กสุดๆ -->
+      <!-- ขนาดปัจจุบัน: w-1 h-1 (4px) - เล็กสุดๆ -->
+      <!-- ตัวเลือกอื่น: w-2 h-2 (8px), w-4 h-4 (16px), w-6 h-6 (24px), w-8 h-8 (32px) -->
+      <div class="w-1 h-1 flex items-center justify-center">
         <img 
           src="/assets/ui/app_crown.png" 
           alt="Crown Icon" 

@@ -214,7 +214,7 @@
   <div class="win-counter">
     {#if showCrown}
     <div class="crown-section">
-      <img src="/assets/ui/crown.png" class="crown" alt="Crown icon" />
+      <img src="/assets/ui/app_crown.png" class="crown" alt="Crown icon" />
     </div>
     {/if}
     <div class="stats-section">
@@ -313,8 +313,8 @@
   }
 
   .crown {
-    width: 70px;
-    height: 70px;
+    width: 4px;
+    height: 4px;
     object-fit: contain;
     filter: 
       brightness(1.1)
@@ -387,8 +387,8 @@
     }
     
     .crown {
-      width: 60px;
-      height: 60px;
+      width: 4px;
+      height: 4px;
     }
     
     .wins, .goal {
