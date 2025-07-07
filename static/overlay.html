@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Overlay</title>
+    <style>
+        /* บังคับลบพื้นหลังทุกอย่าง */
+        html {
+            background: none !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            background-attachment: initial !important;
+            background-blend-mode: initial !important;
+            background-clip: initial !important;
+            background-origin: initial !important;
+            background-position: initial !important;
+            background-repeat: initial !important;
+            background-size: initial !important;
+        }
+        
+        body {
+            background: none !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            background-attachment: initial !important;
+            background-blend-mode: initial !important;
+            background-clip: initial !important;
+            background-origin: initial !important;
+            background-position: initial !important;
+            background-repeat: initial !important;
+            background-size: initial !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        
+        /* ลบพื้นหลังทุกองค์ประกอบ */
+        *, *::before, *::after {
+            background: none !important;
+            background-color: transparent !important;
+            background-image: none !important;
+        }
+
+        /* ลบ gradient ที่อาจมาจาก extension */
+        html::before, html::after,
+        body::before, body::after {
+            display: none !important;
+            content: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 72px; font-family: Arial; text-shadow: 2px 2px 4px rgba(0,0,0,1); z-index: 9999;">
+        👑0/10
+    </div>
+    
+    <div id="debug" style="position: fixed; top: 10px; left: 10px; color: lime; font-size: 12px; background: rgba(0,0,0,0.9); padding: 5px; border-radius: 3px; z-index: 9999;">
+        0/10
+    </div>
+
+    <script>
+        // ลบพื้นหลังที่อาจถูกเพิ่มโดย extension
+        function removeAllBackgrounds() {
+            document.documentElement.style.background = 'none';
+            document.documentElement.style.backgroundColor = 'transparent';
+            document.documentElement.style.backgroundImage = 'none';
+            
+            document.body.style.background = 'none';
+            document.body.style.backgroundColor = 'transparent';
+            document.body.style.backgroundImage = 'none';
+            
+            // ลบ class ที่อาจเพิ่มพื้นหลัง
+            document.documentElement.className = '';
+            document.body.className = '';
+        }
+
+        let win = 0;
+        let goal = 10;
+        let showCrown = true;
+        let showGoal = true;
+        
+        function updateDisplay() {
+            const content = document.getElementById('overlay-content');
+            const debug = document.getElementById('debug');
+            
+            let display = '';
+            if (showCrown) display += '👑';
+            display += win;
+            if (showGoal) display += '/' + goal;
+            
+            content.textContent = display;
+            debug.textContent = win + '/' + goal;
+        }
+        
+        if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('win-count-overlay');
+            
+            channel.onmessage = (event) => {
+                console.log('📻 OVERLAY: Received:', event.data);
+                const data = event.data;
+                
+                if (data) {
+                    if (data.win !== undefined) win = data.win;
+                    if (data.goal !== undefined) goal = data.goal;
+                    if (data.show_crown !== undefined) showCrown = data.show_crown;
+                    if (data.show_goal !== undefined) showGoal = data.show_goal;
+                    updateDisplay();
+                    console.log('📻 OVERLAY: Updated to win=' + win + ', goal=' + goal);
+                }
+            };
+            
+            setTimeout(() => channel.postMessage({ type: 'request-sync' }), 100);
+            setInterval(() => channel.postMessage({ type: 'request-sync' }), 3000);
+            
+            console.log('📻 OVERLAY: Ready');
+        }
+        
+        // เรียกใช้ function ลบพื้นหลัง
+        removeAllBackgrounds();
+        
+        // ตรวจสอบและลบพื้นหลังทุก 100ms ป้องกัน extension เพิ่มเข้ามา
+        setInterval(removeAllBackgrounds, 100);
+        
+        updateDisplay();
+    </script>
+</body>
+</html>

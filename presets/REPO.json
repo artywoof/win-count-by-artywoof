@@ -1,0 +1,11 @@
+{
+  "presetName": "REPO",
+  "win": 0,
+  "goal": 50,
+  "showCrown": true,
+  "showGoal": true,
+  "hotkeys": {
+    "increment": "Alt+=",
+    "decrement": "Alt+-"
+  }
+}

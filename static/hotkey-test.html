@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hotkey Test Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        button { margin: 5px; padding: 8px 16px; }
+        input { margin: 5px; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Hotkey System Test</h1>
+    
+    <div class="test-section">
+        <h3>1. Key Normalization Test</h3>
+        <button onclick="testNormalization()">Test Key Normalization</button>
+        <div id="normalization-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>2. F-Key Support Test</h3>
+        <button onclick="testFKeys()">Test F-Key Support</button>
+        <div id="fkey-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>3. Alt+Shift Combinations Test</h3>
+        <button onclick="testAltShift()">Test Alt+Shift+Equal/Minus</button>
+        <div id="altshift-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>4. Backend Validation Test</h3>
+        <input type="text" id="key-input" placeholder="Enter key combination (e.g., Alt+1)" value="Alt+1">
+        <button onclick="testKeyValidation()">Validate Key</button>
+        <div id="validation-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>5. Debug Console</h3>
+        <p>Open browser console (F12) and use:</p>
+        <code>
+            debugHotkeys.help() // Show all commands<br>
+            debugHotkeys.shortcuts() // Current mappings<br>
+            debugHotkeys.normalizeTest("Alt+Shift+=") // Test normalization<br>
+        </code>
+    </div>
+
+    <script>
+        function showResult(elementId, message, type = 'result') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = message;
+            element.className = `result ${type}`;
+        }
+
+        function testNormalization() {
+            if (typeof window.debugHotkeys === 'undefined') {
+                showResult('normalization-result', '❌ debugHotkeys not available. Make sure app is loaded.', 'error');
+                return;
+            }
+            
+            try {
+                const tests = [
+                    'Alt+Shift+=',
+                    'Alt+Shift+Plus', 
+                    'Alt+Shift+Equal',
+                    'Alt+Shift+-',
+                    'Alt+Shift+Minus'
+                ];
+                
+                let results = '<strong>Normalization Results:</strong><br>';
+                tests.forEach(test => {
+                    const normalized = debugHotkeys.normalizeTest(test);
+                    results += `"${test}" → "${normalized}"<br>`;
+                });
+                
+                showResult('normalization-result', results, 'success');
+            } catch (error) {
+                showResult('normalization-result', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function testFKeys() {
+            if (typeof window.debugHotkeys === 'undefined') {
+                showResult('fkey-result', '❌ debugHotkeys not available. Make sure app is loaded.', 'error');
+                return;
+            }
+            
+            try {
+                const fKeys = ['F1', 'F2', 'F3', 'F4'];
+                let results = '<strong>F-Key Test Results:</strong><br>';
+                
+                fKeys.forEach(async (key) => {
+                    try {
+                        const validation = await debugHotkeys.validateKey(key);
+                        const status = validation.supported ? '✅ Supported' : '❌ Not supported';
+                        results += `${key}: ${status}<br>`;
+                        showResult('fkey-result', results, validation.supported ? 'success' : 'warning');
+                    } catch (error) {
+                        results += `${key}: ❌ Error: ${error.message}<br>`;
+                        showResult('fkey-result', results, 'error');
+                    }
+                });
+            } catch (error) {
+                showResult('fkey-result', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function testAltShift() {
+            if (typeof window.debugHotkeys === 'undefined') {
+                showResult('altshift-result', '❌ debugHotkeys not available. Make sure app is loaded.', 'error');
+                return;
+            }
+            
+            try {
+                const combinations = ['Alt+Shift+Equal', 'Alt+Shift+Minus'];
+                let results = '<strong>Alt+Shift Test Results:</strong><br>';
+                
+                combinations.forEach(combo => {
+                    const actionMapping = debugHotkeys.testKey(combo);
+                    if (actionMapping) {
+                        results += `${combo}: ✅ Maps to action<br>`;
+                    } else {
+                        results += `${combo}: ❌ No mapping found<br>`;
+                    }
+                });
+                
+                showResult('altshift-result', results, 'success');
+            } catch (error) {
+                showResult('altshift-result', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testKeyValidation() {
+            if (typeof window.debugHotkeys === 'undefined') {
+                showResult('validation-result', '❌ debugHotkeys not available. Make sure app is loaded.', 'error');
+                return;
+            }
+            
+            const keyInput = document.getElementById('key-input').value;
+            if (!keyInput) {
+                showResult('validation-result', '❌ Please enter a key combination', 'error');
+                return;
+            }
+            
+            try {
+                const validation = await debugHotkeys.validateKey(keyInput);
+                const status = validation.supported ? '✅ Supported' : '❌ Not supported';
+                const reason = validation.reason ? ` - ${validation.reason}` : '';
+                const message = `<strong>${keyInput}:</strong> ${status}${reason}`;
+                
+                showResult('validation-result', message, validation.supported ? 'success' : 'warning');
+            } catch (error) {
+                showResult('validation-result', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-load check
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (typeof window.debugHotkeys !== 'undefined') {
+                    console.log('🎉 Hotkey debug tools are available!');
+                    console.log('Run debugHotkeys.help() to see all commands.');
+                } else {
+                    console.warn('⚠️ Hotkey debug tools not loaded yet. Wait a moment and try again.');
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

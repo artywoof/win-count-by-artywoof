@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html style="background: transparent !important;">
+<head>
+    <meta charset="utf-8" />
+    <title>Universal Overlay</title>
+    <style>
+        /* Completely transparent background for OBS */
+        html, body {
+            background: transparent !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            overflow: hidden !important;
+        }
+        
+        /* Remove any possible backgrounds from any elements */
+        * {
+            background: transparent !important;
+            background-color: transparent !important;
+            background-image: none !important;
+        }
+        
+        /* Force remove all pseudo-elements that might have backgrounds */
+        *::before, *::after {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>    
+    <!-- Only the numbers display -->
+    <div id="overlay-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 72px; font-family: Arial, sans-serif; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; font-weight: bold;">
+        👑0/10
+    </div>
+
+    <script>
+        let win = 0;
+        let goal = 10;
+        let showCrown = true;
+        let showGoal = true;
+        let wsConnected = false;
+        let bcConnected = false;
+        
+        function updateDisplay() {
+            const content = document.getElementById('overlay-content');
+            
+            let display = '';
+            if (showCrown) display += '👑';
+            display += win;
+            if (showGoal) display += '/' + goal;
+            
+            content.textContent = display;
+            console.log('📻 OVERLAY: Display updated to:', display);
+        }
+        
+        function handleUpdate(data) {
+            if (!data) return;
+            
+            let changed = false;
+            if (data.win !== undefined && data.win !== win) {
+                win = data.win;
+                changed = true;
+            }
+            if (data.goal !== undefined && data.goal !== goal) {
+                goal = data.goal;
+                changed = true;
+            }
+            if (data.show_crown !== undefined && data.show_crown !== showCrown) {
+                showCrown = data.show_crown;
+                changed = true;
+            }
+            if (data.show_goal !== undefined && data.show_goal !== showGoal) {
+                showGoal = data.show_goal;
+                changed = true;
+            }
+            
+            if (changed) {
+                updateDisplay();
+                console.log('📻 OVERLAY: Updated from data:', data);
+            }
+        }
+        
+        // WebSocket connection (for Tauri-to-browser)
+        function connectWebSocket() {
+            try {
+                const                ws = new WebSocket('ws://localhost:8081');
+                
+                ws.onopen = () => {
+                    wsConnected = true;
+                    console.log('📻 OVERLAY: WebSocket connected');
+                    ws.send(JSON.stringify({ type: 'request-sync' }));
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('📻 OVERLAY: WebSocket message received:', data);
+                        handleUpdate(data);
+                    } catch (e) {
+                        console.error('📻 OVERLAY: Error parsing WebSocket message:', e);
+                    }
+                };
+                
+                ws.onclose = () => {
+                    wsConnected = false;
+                    console.log('📻 OVERLAY: WebSocket disconnected, retrying...');
+                    setTimeout(connectWebSocket, 3000);
+                };
+                
+                ws.onerror = (error) => {
+                    wsConnected = false;
+                    console.error('📻 OVERLAY: WebSocket error:', error);
+                };
+                
+            } catch (e) {
+                console.error('📻 OVERLAY: Failed to create WebSocket:', e);
+                setTimeout(connectWebSocket, 5000);
+            }
+        }
+        
+        // BroadcastChannel connection (for browser-to-browser)
+        if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('win-count-overlay');
+            bcConnected = true;
+            console.log('📻 OVERLAY: BroadcastChannel created');
+            
+            channel.onmessage = (event) => {
+                console.log('📻 OVERLAY: BroadcastChannel message received:', event.data);
+                handleUpdate(event.data);
+            };
+            
+            // Send test message
+            setTimeout(() => {
+                channel.postMessage({ type: 'test-from-overlay', timestamp: Date.now() });
+                console.log('📻 OVERLAY: Test message sent to BroadcastChannel');
+            }, 500);
+            
+            // Request initial sync
+            setTimeout(() => {
+                channel.postMessage({ type: 'request-sync' });
+                console.log('📻 OVERLAY: Initial sync requested via BroadcastChannel');
+            }, 100);
+        } else {
+            console.log('📻 OVERLAY: BroadcastChannel not supported');
+        }
+        
+        // Initialize WebSocket connection
+        connectWebSocket();
+        
+        // Initial display
+        updateDisplay();
+        
+        console.log('📻 OVERLAY: Universal overlay initialized');
+        console.log(`📻 OVERLAY: WebSocket: ${wsConnected ? 'enabled' : 'disabled'}, BroadcastChannel: ${bcConnected ? 'enabled' : 'disabled'}`);
+    </script>
+</body>
+</html>

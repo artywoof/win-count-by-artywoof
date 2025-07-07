@@ -1,25 +1,39 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "win-count-by-artywoof",
-  "version": "0.1.0",
+  "productName": "Win Count by ArtYWoof",
+  "version": "1.0.0",
   "identifier": "com.artywoof.wincount",
   "build": {
-    "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeDevCommand": "bun run dev:vite",
+    "devUrl": "http://localhost:1421",
+    "beforeBuildCommand": "bun run build:frontend",
     "frontendDist": "../build"
   },
   "app": {
     "windows": [
       {
         "title": "Win Count by ArtYWoof",
-        "width": 502,
-        "height": 816,
-        "resizable": true,
+        "width": 496,
+        "height": 796,
+        "resizable": false,
         "fullscreen": false,
         "decorations": false,
         "transparent": true,
-        "alwaysOnTop": false
+        "alwaysOnTop": true,
+        "shadow": false,
+        "hiddenTitle": true,
+        "minWidth": 496,
+        "minHeight": 796,
+        "maxWidth": 496,
+        "maxHeight": 796,
+        "focus": false,
+        "acceptFirstMouse": true,
+        "titleBarStyle": "Overlay",
+        "maximizable": false,
+        "minimizable": true,
+        "skipTaskbar": false,
+        "closable": true,
+        "visible": true
       }
     ],
     "trayIcon": {
@@ -34,7 +48,15 @@
   },
   "plugins": {
     "updater": {
-      "active": false
+      "active": true,
+      "endpoints": [
+        "https://releases.artywoof.com/win-count/{{target}}/{{current_version}}"
+      ],
+      "dialog": true,
+      "pubkey": "YOUR_PUBLIC_KEY_HERE"
+    },
+    "globalShortcut": {
+      "shortcuts": []
     }
   },
   "bundle": {

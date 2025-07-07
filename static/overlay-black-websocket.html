@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html style="background: black !important;">
+<head>
+    <meta charset="utf-8" />
+    <title>Overlay - Black BG</title>
+    <style>
+        /* พื้นหลังดำสนิท */
+        html, body {
+            background: #000000 !important;
+            background-color: #000000 !important;
+            background-image: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            overflow: hidden !important;
+        }
+        
+        /* ปิดบัง rainbow ด้วยพื้นหลังดำ */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000000;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- พื้นหลังดำแน่นอน -->
+    <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000000; z-index: 1;"></div>
+    
+    <!-- ตัวเลข -->
+    <div id="overlay-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 72px; font-family: Arial; z-index: 10;">
+        👑0/10
+    </div>
+    
+    <!-- Debug -->
+    <div id="debug" style="position: fixed; top: 10px; left: 10px; color: lime; font-size: 12px; background: rgba(0,0,0,0.9); padding: 5px; border-radius: 3px; z-index: 10;">
+        0/10 - Black BG
+    </div>
+
+    <script>
+        let win = 0;
+        let goal = 10;
+        let showCrown = true;
+        let showGoal = true;
+        let lastReceived = "None";
+        
+        function updateDisplay() {
+            const content = document.getElementById('overlay-content');
+            const debug = document.getElementById('debug');
+            
+            let display = '';
+            if (showCrown) display += '👑';
+            display += win;
+            if (showGoal) display += '/' + goal;
+            
+            content.textContent = display;
+            debug.innerHTML = `${win}/${goal} - Black BG<br>Last: ${lastReceived}`;
+            
+            console.log('📻 OVERLAY: Display updated to:', display);
+        }
+        
+        // Function to add log to overlay display
+        function addLog(message) {
+            const debug = document.getElementById('debug');
+            debug.innerHTML += '<br>' + message;
+        }
+
+        function handleUpdate(data) {
+            if (!data) return;
+            
+            console.log('📻 OVERLAY: Message received:', data);
+            lastReceived = new Date().toLocaleTimeString();
+            
+            // แสดงข้อมูลทุกชนิดที่ได้รับ
+            addLog(`📥 RAW DATA: ${JSON.stringify(data)}`);
+            
+            let changed = false;
+            
+            // ตรวจสอบทุก field ที่เป็นไปได้
+            if (data.win !== undefined && data.win !== win) {
+                console.log(`📻 OVERLAY: Win changing from ${win} to ${data.win}`);
+                win = data.win;
+                changed = true;
+            } else if (data.win !== undefined) {
+                console.log(`📻 OVERLAY: Win same value: ${data.win}`);
+                win = data.win;
+            }
+            
+            if (data.goal !== undefined && data.goal !== goal) {
+                console.log(`📻 OVERLAY: Goal changing from ${goal} to ${data.goal}`);
+                goal = data.goal;
+                changed = true;
+            } else if (data.goal !== undefined) {
+                console.log(`📻 OVERLAY: Goal same value: ${data.goal}`);
+                goal = data.goal;
+            }
+            
+            if (data.show_crown !== undefined) {
+                showCrown = data.show_crown;
+                changed = true;
+            }
+            if (data.show_goal !== undefined) {
+                showGoal = data.show_goal;
+                changed = true;
+            }
+            
+            // บังคับ update แม้ไม่เปลี่ยน
+            updateDisplay();
+            console.log('📻 OVERLAY: Force updated display');
+            
+            if (changed) {
+                console.log('📻 OVERLAY: Changes detected and applied');
+            } else {
+                console.log('📻 OVERLAY: No changes but display updated anyway');
+            }
+        }
+
+        // WebSocket connection (primary)
+        function connectWebSocket() {
+            try {
+                const ws = new WebSocket('ws://localhost:8080');
+                
+                ws.onopen = () => {
+                    console.log('📻 OVERLAY: WebSocket connected');
+                    addLog('✅ WebSocket connected');
+                    ws.send(JSON.stringify({ type: 'request-sync' }));
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleUpdate(data);
+                    } catch (e) {
+                        console.error('📻 OVERLAY: Error parsing WebSocket message:', e);
+                    }
+                };
+                
+                ws.onclose = () => {
+                    console.log('📻 OVERLAY: WebSocket disconnected, retrying...');
+                    addLog('❌ WebSocket disconnected, retrying...');
+                    setTimeout(connectWebSocket, 3000);
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('📻 OVERLAY: WebSocket error:', error);
+                    addLog('❌ WebSocket error');
+                };
+                
+            } catch (e) {
+                console.error('📻 OVERLAY: Failed to create WebSocket:', e);
+                addLog('❌ Failed to create WebSocket');
+                setTimeout(connectWebSocket, 5000);
+            }
+        }
+
+        // BroadcastChannel connection (fallback)
+        if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('win-count-overlay');
+            console.log('📻 OVERLAY: BroadcastChannel created as fallback');
+            
+            channel.onmessage = (event) => {
+                console.log('📻 OVERLAY: BroadcastChannel message received:', event.data);
+                handleUpdate(event.data);
+            };
+            
+            // ส่งข้อความทดสอบครั้งเดียว
+            setTimeout(() => {
+                channel.postMessage({ type: 'test-from-overlay', timestamp: Date.now() });
+                console.log('📻 OVERLAY: Test message sent to BroadcastChannel');
+            }, 500);
+        } else {
+            console.error('📻 OVERLAY: BroadcastChannel not supported');
+        }
+
+        // Initialize WebSocket
+        connectWebSocket();
+        
+        console.log('📻 OVERLAY: Black overlay with WebSocket initialized');
+        
+        // แสดงผลเริ่มต้น
+        updateDisplay();
+    </script>
+</body>
+</html>

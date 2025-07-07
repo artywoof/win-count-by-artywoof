@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test WebSocket Overlay Communication</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .controls { background: #f0f0f0; padding: 20px; margin: 10px 0; border-radius: 5px; }
+        .status { background: #e8f5e8; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        button { padding: 10px 15px; margin: 5px; font-size: 14px; }
+        input { padding: 8px; margin: 5px; width: 80px; }
+        .overlay-preview { background: black; color: white; padding: 20px; text-align: center; font-size: 48px; border-radius: 5px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Win-Count Overlay WebSocket Test</h1>
+        
+        <div class="status" id="status">
+            WebSocket Status: Connecting...
+        </div>
+        
+        <div class="controls">
+            <h3>Test Controls</h3>
+            <div>
+                <label>Win:</label>
+                <input type="number" id="winInput" value="0" min="-9999" max="9999">
+                <label>Goal:</label>
+                <input type="number" id="goalInput" value="10" min="-9999" max="9999">
+            </div>
+            <div>
+                <label><input type="checkbox" id="crownCheckbox" checked> Show Crown</label>
+                <label><input type="checkbox" id="goalCheckbox" checked> Show Goal</label>
+            </div>
+            <div>
+                <button onclick="sendUpdate()">📤 Send Update</button>
+                <button onclick="requestSync()">🔄 Request Sync</button>
+                <button onclick="sendTestSequence()">🧪 Test Sequence</button>
+            </div>
+        </div>
+        
+        <div class="overlay-preview" id="preview">
+            👑0/10
+        </div>
+        
+        <div class="controls">
+            <h3>WebSocket Messages</h3>
+            <div id="messages" style="background: #f9f9f9; padding: 10px; height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+            </div>
+            <button onclick="clearMessages()">Clear Messages</button>
+        </div>
+        
+        <div class="controls">
+            <h3>Quick Links</h3>
+            <a href="http://localhost:8080/overlay-websocket.html" target="_blank">🔗 Open WebSocket Overlay</a><br>
+            <a href="http://localhost:8080/overlay-websocket.html?debug=true" target="_blank">🔗 Open WebSocket Overlay (Debug)</a><br>
+            <a href="file:///f:/win-count-by-artywoof/static/overlay-black.html" target="_blank">🔗 Open BroadcastChannel Overlay</a>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentState = { win: 0, goal: 10, show_crown: true, show_goal: true };
+        
+        function addMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            const timestamp = new Date().toLocaleTimeString();
+            messagesDiv.innerHTML += `<div>${timestamp}: ${message}</div>`;
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function updateStatus(status) {
+            document.getElementById('status').textContent = `WebSocket Status: ${status}`;
+        }
+        
+        function updatePreview() {
+            const preview = document.getElementById('preview');
+            let display = '';
+            if (currentState.show_crown) display += '👑';
+            display += currentState.win;
+            if (currentState.show_goal) display += '/' + currentState.goal;
+            preview.textContent = display;
+        }
+        
+        function connectWebSocket() {
+            try {
+                ws = new WebSocket('ws://localhost:8080');
+                
+                ws.onopen = () => {
+                    updateStatus('Connected');
+                    addMessage('✅ Connected to WebSocket server');
+                    requestSync();
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        addMessage(`📥 Received: ${JSON.stringify(data)}`);
+                        
+                        // Update current state
+                        if (data.win !== undefined) currentState.win = data.win;
+                        if (data.goal !== undefined) currentState.goal = data.goal;
+                        if (data.show_crown !== undefined) currentState.show_crown = data.show_crown;
+                        if (data.show_goal !== undefined) currentState.show_goal = data.show_goal;
+                        
+                        // Update form inputs
+                        document.getElementById('winInput').value = currentState.win;
+                        document.getElementById('goalInput').value = currentState.goal;
+                        document.getElementById('crownCheckbox').checked = currentState.show_crown;
+                        document.getElementById('goalCheckbox').checked = currentState.show_goal;
+                        
+                        updatePreview();
+                    } catch (e) {
+                        addMessage(`❌ Error parsing message: ${e.message}`);
+                    }
+                };
+                
+                ws.onclose = () => {
+                    updateStatus('Disconnected');
+                    addMessage('📴 Disconnected from WebSocket server, retrying...');
+                    setTimeout(connectWebSocket, 3000);
+                };
+                
+                ws.onerror = (error) => {
+                    updateStatus('Error');
+                    addMessage(`❌ WebSocket error: ${error}`);
+                };
+                
+            } catch (e) {
+                updateStatus('Failed');
+                addMessage(`❌ Failed to connect: ${e.message}`);
+                setTimeout(connectWebSocket, 5000);
+            }
+        }
+        
+        function sendUpdate() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('❌ WebSocket not connected');
+                return;
+            }
+            
+            const data = {
+                type: 'update',
+                win: parseInt(document.getElementById('winInput').value),
+                goal: parseInt(document.getElementById('goalInput').value),
+                show_crown: document.getElementById('crownCheckbox').checked,
+                show_goal: document.getElementById('goalCheckbox').checked
+            };
+            
+            ws.send(JSON.stringify(data));
+            addMessage(`📤 Sent: ${JSON.stringify(data)}`);
+        }
+        
+        function requestSync() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('❌ WebSocket not connected');
+                return;
+            }
+            
+            const data = { type: 'request-sync' };
+            ws.send(JSON.stringify(data));
+            addMessage(`📤 Sync requested`);
+        }
+        
+        function sendTestSequence() {
+            let step = 0;
+            const testSteps = [
+                { win: 1, goal: 10, show_crown: true, show_goal: true },
+                { win: 2, goal: 10, show_crown: true, show_goal: true },
+                { win: 3, goal: 10, show_crown: false, show_goal: true },
+                { win: 5, goal: 15, show_crown: true, show_goal: false },
+                { win: 0, goal: 10, show_crown: true, show_goal: true }
+            ];
+            
+            function sendStep() {
+                if (step >= testSteps.length) return;
+                
+                const data = { type: 'update', ...testSteps[step] };
+                document.getElementById('winInput').value = data.win;
+                document.getElementById('goalInput').value = data.goal;
+                document.getElementById('crownCheckbox').checked = data.show_crown;
+                document.getElementById('goalCheckbox').checked = data.show_goal;
+                
+                sendUpdate();
+                step++;
+                
+                if (step < testSteps.length) {
+                    setTimeout(sendStep, 1000);
+                }
+            }
+            
+            sendStep();
+        }
+        
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+        
+        // Connect on page load
+        connectWebSocket();
+        
+        // Update preview on form changes
+        document.getElementById('winInput').addEventListener('input', updatePreview);
+        document.getElementById('goalInput').addEventListener('input', updatePreview);
+        document.getElementById('crownCheckbox').addEventListener('change', updatePreview);
+        document.getElementById('goalCheckbox').addEventListener('change', updatePreview);
+    </script>
+</body>
+</html>

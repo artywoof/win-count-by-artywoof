@@ -1,0 +1,246 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'MiSansThaiVF';
+  src: url('/src/assets/fonts/MiSansThaiVF.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+/* Frameless window styles */
+html, body {
+  margin: 0px;
+  padding: 0px;
+  overflow: hidden;
+  font-family: 'MiSansThaiVF', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 496px;
+  height: 796px;
+  -webkit-app-region: drag;
+  color: #ffffff;
+  background: transparent;
+  border-radius: 0px;
+  /* Force remove any potential borders/shadows */
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  /* Hide potential system focus borders */
+  position: relative;
+}
+
+/* Force hide any system borders or outlines */
+html {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+}
+
+body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Hide focus rings and system borders */
+*:focus,
+*:active,
+*:target,
+html:focus,
+body:focus {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove any potential window borders */
+:root {
+  --webkit-focus-ring-color: transparent !important;
+}
+
+/* Exclude interactive elements from drag */
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Remove scrollbars globally */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  outline: none !important; /* Remove all focus outlines */
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Remove focus outlines for all interactive elements */
+button:focus,
+input:focus,
+select:focus,
+textarea:focus,
+div[role="button"]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Enhanced Cyberpunk Text Glow */
+.cyberpunk-text-glow {
+  background: linear-gradient(45deg, #ff00cc, #00ffff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Enhanced Input Styling */
+.cyberpunk-input {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.cyberpunk-input:focus {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.cyberpunk-input::placeholder {
+  color: rgba(0, 255, 255, 0.3);
+}
+
+/* Enhanced Cyberpunk animations */
+@keyframes cyberpunk-shake {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-3px) rotate(-0.5deg); }
+  20% { transform: translateX(3px) rotate(0.5deg); }
+  30% { transform: translateX(-3px) rotate(-0.5deg); }
+  40% { transform: translateX(3px) rotate(0.5deg); }
+  50% { transform: translateX(-2px) rotate(-0.3deg); }
+  60% { transform: translateX(2px) rotate(0.3deg); }
+  70% { transform: translateX(-2px) rotate(-0.3deg); }
+  80% { transform: translateX(2px) rotate(0.3deg); }
+  90% { transform: translateX(-1px) rotate(-0.1deg); }
+}
+
+@keyframes cyberpunk-flash {
+  0%, 100% { 
+    border-color: rgba(0, 255, 255, 0.6);
+    background: rgba(0, 0, 0, 0.7);
+  }
+  25% { 
+    border-color: #ff0000;
+    background: rgba(255, 0, 0, 0.1);
+  }
+  50% {
+    border-color: #ff0000;
+    background: rgba(255, 0, 0, 0.2);
+  }
+  75% { 
+    border-color: #ff0000;
+    background: rgba(255, 0, 0, 0.1);
+  }
+}
+
+@keyframes cyberpunk-pulse {
+  0% { 
+    border-color: rgba(0, 255, 255, 0.6);
+    transform: scale(1);
+  }
+  50% { 
+    border-color: #00ffff;
+    transform: scale(1.02);
+  }
+  100% { 
+    border-color: rgba(0, 255, 255, 0.6);
+    transform: scale(1);
+  }
+}
+
+@keyframes minimize-effect {
+  0% { transform: scale(1) rotate(0deg); opacity: 1; }
+  50% { transform: scale(0.98) rotate(-1deg); opacity: 0.9; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes hide-to-tray-effect {
+  0% { transform: scale(1) rotate(0deg); opacity: 1; }
+  50% { transform: scale(0.95) rotate(2deg); opacity: 0.7; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes glow-border {
+  0%, 100% {
+    border-color: rgba(0, 255, 255, 0.5);
+  }
+  50% {
+    border-color: rgba(0, 255, 255, 0.8);
+  }
+}
+
+/* Animation classes */
+.cyberpunk-shake {
+  animation: cyberpunk-shake 0.6s ease-in-out;
+}
+
+.cyberpunk-flash {
+  animation: cyberpunk-flash 0.8s ease-in-out;
+}
+
+.cyberpunk-pulse {
+  animation: cyberpunk-pulse 0.4s ease-in-out;
+}
+
+.minimize-animation {
+  animation: minimize-effect 0.4s ease-in-out;
+}
+
+.hide-to-tray-animation {
+  animation: hide-to-tray-effect 0.4s ease-in-out;
+}
+
+.glow-border {
+  animation: glow-border 2s ease-in-out infinite;
+}
+
+/* Custom scrollbar for any scrollable content */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(45deg, #ff00cc, #00ffff);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(45deg, #ff00cc, #00ffff);
+}
+
+/* Backdrop blur support */
+.backdrop-blur-sm {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Enhanced hover effects */
+.hover-glow:hover {
+  transform: translateY(-1px);
+  transition: all 0.3s ease;
+}
+
+/* Keyboard key styling */
+kbd {
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
