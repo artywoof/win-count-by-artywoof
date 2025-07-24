@@ -1,5 +1,4 @@
 import { writable } from 'svelte/store';
-import { tauriWin as winCount } from './stores';
 import { audioManager } from './audioManager';
 import { invoke } from '@tauri-apps/api/core';
 import { get } from 'svelte/store';
@@ -58,23 +57,47 @@ export function normalizeShortcut(shortcut: string): string {
 
 let isRunning = false;
 
-// --- Update win count and play sound async ---
+// --- Update win count via Tauri command (same as typing) ---
 export async function updateWin(delta: number) {
   if (isRunning) return;
   isRunning = true;
-  winCount.update(current => {
-    const newVal = Math.max(-10000, Math.min(10000, (current.win || 0) + delta));
-    console.log('Updating win count to:', newVal);
-    // Play sound async (non-blocking)
+  
+  try {
+    // Get current win count from Tauri state (NOT store)
+    const currentState = await invoke('get_win_state') as any;
+    const currentWin = currentState.win || 0;
+    const newVal = Math.max(-10000, Math.min(10000, currentWin + delta));
+    
+    console.log(`🎹 Hotkey: ${currentWin} + ${delta} = ${newVal} (from Tauri state)`);
+    
+    // Use Tauri command to set win (same as typing)
+    await invoke('set_win', { value: newVal });
+    
+    // Play sound async (non-blocking) - with debug logging
+    console.log('🔊 Playing sound for delta:', delta);
     if (delta > 0) {
-      if (delta === 1) audioManager.play('increase');
-      else audioManager.play('increment10');
+      if (delta === 1) {
+        console.log('🔊 Playing increase sound');
+        audioManager.play('increase');
+      } else {
+        console.log('🔊 Playing increment10 sound');
+        audioManager.play('increment10');
+      }
     } else {
-      if (delta === -1) audioManager.play('decrease');
-      else audioManager.play('decrement10');
+      if (delta === -1) {
+        console.log('🔊 Playing decrease sound');
+        audioManager.play('decrease');
+      } else {
+        console.log('🔊 Playing decrement10 sound');
+        audioManager.play('decrement10');
     }
-    return { ...current, win: newVal };
-  });
+    }
+    
+    console.log(`✅ Hotkey: Win count updated to ${newVal} via Tauri`);
+  } catch (error) {
+    console.error('❌ Hotkey: Failed to update win count:', error);
+  }
+  
   setTimeout(() => { isRunning = false; }, 50);
 }
 
@@ -106,42 +129,17 @@ export function getHotkeyConflicts(settings = get(hotkeySettings)) {
 
 // Register hotkeys from settings (dynamic)
 export async function registerHotkeysFromSettings() {
-  await unregisterAllHotkeys();
-  const settings = get(hotkeySettings);
-  if (!settings.enabled) return;
-  const keybindMap: Record<string, { action: string; delta: number }> = {
-    [keybindToString(settings.actions.increment.currentKeybind)]: { action: 'increment', delta: 1 },
-    [keybindToString(settings.actions.decrement.currentKeybind)]: { action: 'decrement', delta: -1 },
-    [keybindToString(settings.actions.increment10.currentKeybind)]: { action: 'increment10', delta: 10 },
-    [keybindToString(settings.actions.decrement10.currentKeybind)]: { action: 'decrement10', delta: -10 },
-  };
-  for (const [shortcut, { delta }] of Object.entries(keybindMap)) {
-    try {
-      await invoke('plugin:global-shortcut|register', { shortcut });
-      registeredShortcuts.push(shortcut);
-      window.addEventListener('tauri-hotkey', (e: any) => {
-        if (e.detail && keybindToString(e.detail.keybind) === shortcut) {
-          updateWin(delta);
-        }
-      });
-    } catch (e) {
-      // fallback local
-      window.addEventListener('keydown', (event) => {
-        const target = event.target as HTMLElement;
-        if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
-        const mods = [];
-        if (event.ctrlKey) mods.push('Ctrl');
-        if (event.altKey) mods.push('Alt');
-        if (event.shiftKey) mods.push('Shift');
-        if (event.metaKey) mods.push('Meta');
-        const shortcutStr = [...mods, event.code].join('+');
-        if (shortcutStr === shortcut) {
-          updateWin(delta);
-          event.preventDefault();
-        }
-      });
-    }
-  }
+  // DISABLED: Rust backend handles hotkeys directly to avoid conflicts
+  // await unregisterAllHotkeys();
+  // const settings = get(hotkeySettings);
+  // if (!settings.enabled) return;
+  
+  console.log('🚫 Frontend hotkey registration disabled - using Rust backend hotkeys');
+  console.log('🔧 To re-enable, modify registerHotkeysFromSettings() in hotkeyManager.ts');
+  
+  // TODO: Integrate with Rust backend hotkey system
+  // For now, hotkeys are handled directly in main.rs
+  return;
 }
 
 // --- Register hotkeys globally and fallback locally ---

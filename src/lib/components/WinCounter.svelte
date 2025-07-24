@@ -1,42 +1,35 @@
 <!-- ================================================================= -->
 <!-- FILE: src/lib/components/WinCounter.svelte                        -->
 <!-- ACTION: Replace the entire content of this file.                -->
-<!-- PURPOSE: Significantly reduce the size of the crown icon.       -->
+<!-- PURPOSE: Remove hotkey listeners and use props instead of stores -->
 <!-- ================================================================= -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { tauriWin } from '../stores';
   import { invoke } from '@tauri-apps/api/core';
-  import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import EditableNumber from './EditableNumber.svelte';
 
-  let unlistenIncrement: UnlistenFn | null = null;
-  let unlistenDecrement: UnlistenFn | null = null;
+  // Component props
+  export let winCount = 0;
+  export let showCrown = false;
+  export let onWinChange: (value: number) => void = () => {};
+  
   let isEditing = false;
   let editValue = '';
-  let inputElement: HTMLInputElement;
-
-  $: winCount = $tauriWin.win;
-  $: showCrown = $tauriWin.show_crown || false;
+  let inputElement: HTMLInputElement | null = null;
 
   onMount(async () => {
     try {
-      unlistenIncrement = await listen("hotkey-increment", () => {
-        handleIncrement();
-      });
-
-      unlistenDecrement = await listen("hotkey-decrement", () => {
-        handleDecrement();
-      });
-
+      // NOTE: Hotkey events are handled directly by Rust backend
+      // No need to listen for hotkey events here since Rust calls change_win() directly
+      console.log('🎯 WinCounter mounted - hotkey handling disabled (using Rust backend)');
     } catch (e) {
-      console.error("Error setting up WinCounter listeners:", e);
+      console.error("Error setting up WinCounter:", e);
     }
   });
 
   onDestroy(() => {
-    if (unlistenIncrement) unlistenIncrement();
-    if (unlistenDecrement) unlistenDecrement();
+    // No listeners to clean up since hotkeys are handled by Rust backend
+    console.log('🎯 WinCounter destroyed');
   });
 
   async function handleIncrement() {
@@ -57,9 +50,9 @@
 
   function startEditing() {
     if (isEditing) return;
-    console.log("Starting edit mode, current value:", $tauriWin.win);
+    console.log("Starting edit mode, current value:", winCount);
     isEditing = true;
-    editValue = $tauriWin.win.toString();
+    editValue = winCount.toString();
     setTimeout(() => {
       if (inputElement) {
         console.log("Focusing input element");
@@ -87,6 +80,7 @@
       console.log("Invoking set_win with value:", newValue);
       await invoke('set_win', { value: newValue });
       console.log("Successfully set win count to:", newValue);
+      onWinChange(newValue);
       isEditing = false;
       editValue = '';
     } catch (e) {
@@ -116,11 +110,10 @@
 <div class="win-counter-iphone">
   <div class="win-header">
     <span class="win-title">WIN</span>
-    {#if showCrown}
-      <img src="/assets/ui/app_crown.png" alt="Crown" class="crown-icon-iphone" />
-    {/if}
+    <!-- Crown Icon -->
+    <img src="/assets/ui/crown.png" alt="Crown" class="crown-icon" />
   </div>
-  <EditableNumber value={$tauriWin.win} min={-10000} max={10000} on:change={e => tauriWin.update(v => ({...v, win: e.detail}))} />
+  <EditableNumber value={winCount} min={-10000} max={10000} on:change={e => onWinChange(e.detail)} />
   <div class="win-actions">
     <button class="win-btn-iphone minus" on:click={handleDecrement}>-</button>
     <button class="win-btn-iphone plus" on:click={handleIncrement}>+</button>
@@ -152,7 +145,7 @@
     font-weight: 600;
     letter-spacing: 0.01em;
   }
-  .crown-icon-iphone {
+  .crown-icon {
     width: 36px;
     height: 36px;
     margin-left: 4px;
@@ -207,10 +200,15 @@
     color: #fff;
   }
   .win-btn-iphone.minus {
-    background: linear-gradient(90deg, #fca5a5 0%, #f87171 100%);
+    background: linear-gradient(90deg, #fecaca 0%, #f87171 100%);
     color: #fff;
   }
+  .win-btn-iphone:hover {
+    box-shadow: 0 4px 16px 0 rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+  }
   .win-btn-iphone:active {
-    box-shadow: 0 4px 16px 0 rgba(99,102,241,0.13);
+    transform: translateY(0);
+    box-shadow: 0 2px 8px 0 rgba(0,0,0,0.1);
   }
 </style>

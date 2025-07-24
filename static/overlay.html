@@ -1,129 +1,1032 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Overlay</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Win Count Overlay</title>
     <style>
-        /* บังคับลบพื้นหลังทุกอย่าง */
+        @font-face {
+            font-family: 'MiSansThai-Medium';
+            src: url('/assets/fonts/MiSansThai-Medium.ttf') format('truetype');
+            font-display: swap;
+        }
+        
         html {
-            background: none !important;
-            background-color: transparent !important;
-            background-image: none !important;
-            background-attachment: initial !important;
-            background-blend-mode: initial !important;
-            background-clip: initial !important;
-            background-origin: initial !important;
-            background-position: initial !important;
-            background-repeat: initial !important;
-            background-size: initial !important;
+            background: transparent !important;
         }
         
         body {
-            background: none !important;
-            background-color: transparent !important;
-            background-image: none !important;
-            background-attachment: initial !important;
-            background-blend-mode: initial !important;
-            background-clip: initial !important;
-            background-origin: initial !important;
-            background-position: initial !important;
-            background-repeat: initial !important;
-            background-size: initial !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+            overflow: hidden;
+            font-family: 'MiSansThai-Medium', 'MiSansThai', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         
-        /* ลบพื้นหลังทุกองค์ประกอบ */
-        *, *::before, *::after {
-            background: none !important;
-            background-color: transparent !important;
-            background-image: none !important;
+        * {
+            box-sizing: border-box;
         }
 
-        /* ลบ gradient ที่อาจมาจาก extension */
-        html::before, html::after,
-        body::before, body::after {
-            display: none !important;
-            content: none !important;
+        .overlay-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 9999;
+            background: transparent;
+        }
+
+        .neon-pill {
+            position: relative;
+            width: var(--container-width);
+            height: 90px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            background: transparent;
+            border-radius: 16px;
+            overflow: visible;
+            z-index: 1;
+            transition: width 0.3s ease;
+            isolation: isolate;
+            
+            /* Main app style rainbow border */
+            border: 2px solid transparent;
+            background-clip: padding-box;
+        }
+        
+        .content-wrapper {
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            height: 100%;
+            padding-top: 10px;
+            transform: translateX(-9.5px);
+            margin-top: -14px;
+        }
+
+        .neon-pill::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            border-radius: 18px;
+            --rotation: 0deg;
+            background: conic-gradient(from var(--rotation), 
+                rgba(255, 0, 128, 0.7) 0%,    /* Hot Pink */
+                rgba(255, 31, 0, 0.7) 5%,     /* Red-Orange */
+                rgba(255, 64, 0, 0.7) 10%,    /* Orange */
+                rgba(255, 96, 0, 0.7) 15%,    /* Deep Orange */
+                rgba(255, 128, 0, 0.7) 20%,   /* Golden Orange */
+                rgba(255, 170, 0, 0.7) 25%,   /* Gold */
+                rgba(255, 212, 0, 0.7) 30%,   /* Yellow Gold */
+                rgba(255, 255, 0, 0.7) 35%,   /* Pure Yellow */
+                rgba(204, 255, 0, 0.7) 40%,   /* Lime Yellow */
+                rgba(128, 255, 0, 0.7) 45%,   /* Lime Green */
+                rgba(64, 255, 0, 0.7) 50%,    /* Bright Green */
+                rgba(0, 255, 64, 0.7) 55%,    /* Green Cyan */
+                rgba(0, 255, 128, 0.7) 60%,   /* Aqua Green */
+                rgba(0, 255, 204, 0.7) 65%,   /* Turquoise */
+                rgba(0, 204, 255, 0.7) 70%,   /* Sky Blue */
+                rgba(0, 128, 255, 0.7) 75%,   /* Bright Blue */
+                rgba(0, 64, 255, 0.7) 80%,    /* Deep Blue */
+                rgba(64, 0, 255, 0.7) 85%,    /* Purple Blue */
+                rgba(128, 0, 255, 0.7) 90%,   /* Purple */
+                rgba(204, 0, 255, 0.7) 95%,   /* Magenta Purple */
+                rgba(255, 0, 128, 0.7) 100%); /* Back to Hot Pink */
+            z-index: -2;
+            animation: smooth-rotate 8s linear infinite;
+            transition: all 0.3s ease;
+        }
+
+        .neon-pill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 16px;
+            background: rgba(17, 17, 22, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: -1;
+        }
+
+        @keyframes smooth-rotate {
+            0% { --rotation: 0deg; }
+            100% { --rotation: 360deg; }
+        }
+
+        @keyframes subtle-pulse {
+            0% { 
+                text-shadow: 
+                    0 0 6px #ff444430,
+                    0 0 12px #ff444420,
+                    0 0 18px #ff444415;
+            }
+            50% { 
+                text-shadow: 
+                    0 0 8px #ff444440,
+                    0 0 16px #ff444430,
+                    0 0 24px #ff444420;
+            }
+            100% { 
+                text-shadow: 
+                    0 0 6px #ff444430,
+                    0 0 12px #ff444420,
+                    0 0 18px #ff444415;
+            }
+        }
+
+        @property --rotation {
+            syntax: '<angle>';
+            initial-value: 0deg;
+            inherits: false;
+        }
+
+        .crown-icon {
+            width: var(--crown-size);
+            height: var(--crown-size);
+            object-fit: contain;
+            filter: drop-shadow(0 0 4px #ffa50040) drop-shadow(0 0 8px #ff8c0025);
+            z-index: 4;
+            user-select: none;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+            transform: translateX(calc(var(--crown-offset) + 6px));
+            margin-top: 0.5px;
+        }
+        
+        .win-number {
+            font-family: 'MiSansThai-Medium', 'MiSansThai', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: var(--win-font-size);
+            font-weight: 500;
+            color: #00ffff;
+            transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
+            z-index: 4;
+            flex-shrink: 0;
+            white-space: nowrap;
+            text-align: center;
+            min-width: 50px;
+            margin-top: -24px;
+            margin-right: 3px;
+            margin-left: 4px;
+            text-shadow: 
+                0 0 3px #00ffff30,
+                0 0 6px #00ffff20,
+                0 0 9px #00ffff15;
+        }
+        
+        .win-number.negative {
+            color: #ff4444;
+            text-shadow: 
+                0 0 3px #ff444430,
+                0 0 6px #ff444420,
+                0 0 9px #ff444415;
+        }
+
+        .slash {
+            position: absolute;
+            font-family: 'MiSansThai-Medium', 'MiSansThai', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: var(--slash-font-size);
+            font-weight: 300;
+            background: linear-gradient(180deg, #a259f7 0%, #00eaff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            z-index: 4;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+            margin-top: -21px;
+            text-align: center;
+            min-width: 25px;
+            text-shadow: 
+                0 0 3px #a259f730,
+                0 0 6px #00eaff20,
+                0 0 9px #a259f715;
+        }
+
+        .goal-number {
+            position: absolute;
+            font-family: 'MiSansThai-Medium', 'MiSansThai', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: var(--goal-font-size);
+            font-weight: 500;
+            color: #ff00ff;
+            transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
+            z-index: 4;
+            flex-shrink: 0;
+            white-space: nowrap;
+            text-align: center;
+            min-width: 50px;
+            margin-top: -24px;
+            text-shadow: 
+                0 0 3px #ff00ff30,
+                0 0 6px #ff00ff20,
+                0 0 9px #ff00ff15;
+        }
+
+        /* Mobile responsiveness removed - desktop only */
+        
+
+
+        /* AAA-level Animation Effects */
+        .particles-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 10000;
+            overflow: hidden;
+        }
+        
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            box-shadow: 0 0 12px currentColor, 0 0 24px currentColor;
+            animation: particle-pop 0.8s ease-out; /* Faster particles */
+        }
+        
+        @keyframes particle-glow {
+            0% { 
+                transform: scale(0) rotate(0deg);
+                box-shadow: 0 0 0px currentColor;
+            }
+            50% { 
+                transform: scale(1.2) rotate(180deg);
+                box-shadow: 0 0 12px currentColor;
+            }
+            100% { 
+                transform: scale(1) rotate(360deg);
+                box-shadow: 0 0 6px currentColor;
+            }
+        }
+
+        /* Enhanced Screen Shake Animations */
+        @keyframes screen-shake-intense {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            8% { transform: translate(-6px, -3px) rotate(-1deg); }
+            16% { transform: translate(-3px, 6px) rotate(1deg); }
+            24% { transform: translate(6px, 3px) rotate(0deg); }
+            32% { transform: translate(3px, -6px) rotate(1deg); }
+            40% { transform: translate(-3px, 3px) rotate(-1deg); }
+            48% { transform: translate(-6px, 6px) rotate(0deg); }
+            56% { transform: translate(6px, -3px) rotate(-1deg); }
+            64% { transform: translate(-3px, -6px) rotate(1deg); }
+            72% { transform: translate(3px, 6px) rotate(0deg); }
+            80% { transform: translate(-6px, 3px) rotate(-1deg); }
+            88% { transform: translate(6px, -6px) rotate(1deg); }
+            96% { transform: translate(-3px, 3px) rotate(0deg); }
+        }
+        
+        @keyframes screen-shake-large {
+            0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+            10% { transform: translate(-8px, -4px) rotate(-2deg) scale(1.02); }
+            20% { transform: translate(-4px, 8px) rotate(2deg) scale(0.98); }
+            30% { transform: translate(8px, 4px) rotate(-1deg) scale(1.01); }
+            40% { transform: translate(4px, -8px) rotate(2deg) scale(0.99); }
+            50% { transform: translate(-4px, 4px) rotate(-2deg) scale(1.01); }
+            60% { transform: translate(-8px, 8px) rotate(1deg) scale(0.98); }
+            70% { transform: translate(8px, -4px) rotate(-2deg) scale(1.02); }
+            80% { transform: translate(-4px, -8px) rotate(2deg) scale(0.99); }
+            90% { transform: translate(4px, 8px) rotate(-1deg) scale(1.01); }
+        }
+        
+        /* Particle Pop Animation (Call of Duty/Fortnite style) */
+        @keyframes particle-pop {
+            0% { 
+                transform: scale(0) rotate(0deg);
+                opacity: 1;
+            }
+            20% { 
+                transform: scale(1.5) rotate(90deg);
+                opacity: 0.9;
+            }
+            40% { 
+                transform: scale(1.2) rotate(180deg);
+                opacity: 0.7;
+            }
+            60% { 
+                transform: scale(1) rotate(270deg);
+                opacity: 0.5;
+            }
+            80% { 
+                transform: scale(0.8) rotate(360deg);
+                opacity: 0.3;
+            }
+            100% { 
+                transform: scale(0.5) rotate(450deg);
+                opacity: 0;
+            }
+        }
+        
+        /* Enhanced Number Animations */
+        .win-number, .goal-number {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: center;
+        }
+        
+        .win-number.animating, .goal-number.animating {
+            animation: number-burst 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Add win-number and goal-number classes for animation targeting */
+        .win-number {
+            /* This ensures the element can be targeted by .win-number selector */
+        }
+        
+        .goal-number {
+            /* This ensures the element can be targeted by .goal-number selector */
+        }
+        
+        @keyframes number-burst {
+            0% { 
+                transform: scale(1);
+                filter: brightness(1) saturate(1);
+            }
+            30% { 
+                transform: scale(1.25);
+                filter: brightness(1.8) saturate(2);
+            }
+            60% { 
+                transform: scale(0.95);
+                filter: brightness(1.4) saturate(1.6);
+            }
+            100% { 
+                transform: scale(1);
+                filter: brightness(1) saturate(1);
+            }
+        }
+        
+        /* Enhanced Glow Effects for Animations */
+        .win-number.increase-glow {
+            text-shadow: 
+                0 0 10px #00ff0080,
+                0 0 20px #00ff0060,
+                0 0 30px #00ff0040,
+                0 0 40px #00ff0020;
+            animation: increase-pulse 0.6s ease-out;
+        }
+
+        .win-number.decrease-glow {
+            text-shadow: 
+                0 0 10px #ff444480,
+                0 0 20px #ff444460,
+                0 0 30px #ff444440,
+                0 0 40px #ff444420;
+            animation: decrease-pulse 0.6s ease-out;
+        }
+
+        .goal-number.increase-glow {
+            text-shadow: 
+                0 0 10px #00ff0080,
+                0 0 20px #00ff0060,
+                0 0 30px #00ff0040,
+                0 0 40px #00ff0020;
+            animation: increase-pulse 0.6s ease-out;
+        }
+        
+        .goal-number.decrease-glow {
+            text-shadow: 
+                0 0 10px #ff444480,
+                0 0 20px #ff444460,
+                0 0 30px #ff444440,
+                0 0 40px #ff444420;
+            animation: decrease-pulse 0.6s ease-out;
+        }
+
+        @keyframes increase-pulse {
+            0% { 
+                text-shadow: 
+                    0 0 6px #00ffff30,
+                    0 0 12px #00ffff20,
+                    0 0 18px #00ffff15;
+            }
+            50% { 
+                text-shadow: 
+                    0 0 15px #00ff0080,
+                    0 0 25px #00ff0060,
+                    0 0 35px #00ff0040,
+                    0 0 45px #00ff0020;
+            }
+            100% { 
+                text-shadow: 
+                    0 0 6px #00ffff30,
+                    0 0 12px #00ffff20,
+                    0 0 18px #00ffff15;
+            }
+        }
+        
+        @keyframes decrease-pulse {
+            0% { 
+                text-shadow: 
+                    0 0 6px #00ffff30,
+                    0 0 12px #00ffff20,
+                    0 0 18px #00ffff15;
+            }
+            50% { 
+                text-shadow: 
+                    0 0 15px #ff444480,
+                    0 0 25px #ff444460,
+                    0 0 35px #ff444440,
+                    0 0 45px #ff444420;
+            }
+            100% { 
+                text-shadow: 
+                    0 0 6px #00ffff30,
+                    0 0 12px #00ffff20,
+                    0 0 18px #00ffff15;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="overlay-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 72px; font-family: Arial; text-shadow: 2px 2px 4px rgba(0,0,0,1); z-index: 9999;">
-        👑0/10
-    </div>
-    
-    <div id="debug" style="position: fixed; top: 10px; left: 10px; color: lime; font-size: 12px; background: rgba(0,0,0,0.9); padding: 5px; border-radius: 3px; z-index: 9999;">
-        0/10
+    <div class="overlay-container">
+        <div class="neon-pill" id="neon-pill" style="--crown-size: 79px; --win-font-size: 90px; --slash-font-size: 80px; --goal-font-size: 90px; --container-width: 247px; --crown-offset: -8px;">
+            <div class="content-wrapper">
+                <img src="/assets/ui/crown.png" alt="Crown" class="crown-icon" draggable="false" id="crown-icon" />
+                <span class="win-number" id="win-number">0</span>
+                <span class="slash">/</span>
+                <span class="goal-number" id="goal-number">0</span>
+            </div>
+        </div>
+        
+
     </div>
 
     <script>
-        // ลบพื้นหลังที่อาจถูกเพิ่มโดย extension
-        function removeAllBackgrounds() {
-            document.documentElement.style.background = 'none';
-            document.documentElement.style.backgroundColor = 'transparent';
-            document.documentElement.style.backgroundImage = 'none';
-            
-            document.body.style.background = 'none';
-            document.body.style.backgroundColor = 'transparent';
-            document.body.style.backgroundImage = 'none';
-            
-            // ลบ class ที่อาจเพิ่มพื้นหลัง
-            document.documentElement.className = '';
-            document.body.className = '';
-        }
-
-        let win = 0;
-        let goal = 10;
+        // Stores for overlay data
+        let winCount = 0;
+        let goalCount = 0;
         let showCrown = true;
         let showGoal = true;
+        let isCompact = false;
+
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        const reconnectDelay = 1000;
+
+        // Animation states
+        let animating = false;
+        let lastWinCount = 0;
+        let lastGoalCount = 0;
         
+        // Simple animation states
+        let isWinAnimating = false;
+        let isGoalAnimating = false;
+
+        // DOM elements
+        const winNumberElement = document.getElementById('win-number');
+        const goalNumberElement = document.getElementById('goal-number');
+        const crownIconElement = document.getElementById('crown-icon');
+        const neonPillElement = document.getElementById('neon-pill');
+
+        // เพิ่ม Audio สำหรับเสียงเพิ่ม/ลด
+        const increaseAudio = new Audio('/assets/sfx/increase.mp3');
+        const decreaseAudio = new Audio('/assets/sfx/decrease.mp3');
+        increaseAudio.volume = 1.0;
+        decreaseAudio.volume = 1.0;
+
+        // เพิ่มตัวแปรเพื่อ track ว่า user override toggle หรือยัง
+        let userToggledGoal = false;
+        let userToggledCrown = false;
+
+        // Calculate container width based on number length
+        function calculateContainerWidth() {
+            const winLength = Math.abs(winCount).toString().length;
+            const goalLength = Math.abs(goalCount).toString().length;
+            const maxLength = Math.max(winLength, goalLength);
+            
+            // Calculate total character count excluding minus signs for consistent spacing
+            const winCharCount = Math.abs(winCount).toString().length; // exclude minus sign
+            const goalCharCount = Math.abs(goalCount).toString().length; // exclude minus sign
+            let totalCharCount = winCharCount + goalCharCount + 1; // +1 for slash
+            if (winCount < 0) {
+                totalCharCount += 1; // เพิ่ม 1 step เฉพาะเลขติดลบ
+            }
+            
+            // Calculate container width based on total characters - progressive 98px increments (หาร 2)
+            let containerWidth = totalCharCount <= 3 ? 240 :   // e.g., 9/9 = 3 chars
+                                totalCharCount <= 4 ? 289 :   // e.g., -9/9 = 4 chars
+                                totalCharCount <= 5 ? 338 :   // e.g., -99/9 = 5 chars
+                                totalCharCount <= 6 ? 387 :   // e.g., -99/99 = 6 chars
+                                totalCharCount <= 7 ? 436 :   // e.g., -99/999 = 7 chars
+                                totalCharCount <= 8 ? 485 :   // e.g., -10000/9 = 8 chars
+                                totalCharCount <= 9 ? 534 : // e.g., -9999/999 = 9 chars
+                                totalCharCount <= 10 ? 583 : // e.g., -9999/9999 = 10 chars
+                                totalCharCount <= 11 ? 632 : // e.g., -10000/9999 = 11 chars
+                                totalCharCount <= 12 ? 681 : // e.g., -10000/10000 = 12 chars
+                                730;
+            // Reduce container width by 21px for negative 1-digit numbers (-9/9)
+            if (winCount < 0 && Math.abs(winCount).toString().length === 1) {
+                containerWidth -= 21;
+            }
+            // Reduce container width by 13px for negative 4-digit numbers (-9999/9)
+            if (winCount < 0 && Math.abs(winCount).toString().length === 4) {
+                containerWidth -= 13;
+            }
+            // Reduce container width by 9px for negative 3-digit numbers (-999/9)
+            if (winCount < 0 && Math.abs(winCount).toString().length === 3) {
+                containerWidth -= 9;
+            }
+            // Reduce container width by 15px for negative 2-digit numbers (-99/9)
+            if (winCount < 0 && Math.abs(winCount).toString().length === 2) {
+                containerWidth -= 15;
+            }
+            // Reduce container width by 31px for negative 5-digit numbers (-10000/9)
+            if (winCount < 0 && Math.abs(winCount).toString().length === 5) {
+                containerWidth -= 31;
+            }
+            // Reduce container width by 13px for positive 5-digit numbers (10000/9)
+            if (winCount === 10000) {
+                containerWidth -= 13;
+            }
+            // Lock crown position at fixed offset
+            const crownOffset = -8;
+            return containerWidth;
+        }
+
+        // Update display
         function updateDisplay() {
-            const content = document.getElementById('overlay-content');
-            const debug = document.getElementById('debug');
-            
-            let display = '';
-            if (showCrown) display += '👑';
-            display += win;
-            if (showGoal) display += '/' + goal;
-            
-            content.textContent = display;
-            debug.textContent = win + '/' + goal;
-        }
-        
-        if (typeof BroadcastChannel !== 'undefined') {
-            const channel = new BroadcastChannel('win-count-overlay');
-            
-            channel.onmessage = (event) => {
-                console.log('📻 OVERLAY: Received:', event.data);
-                const data = event.data;
+            const containerWidth = calculateContainerWidth();
+            const crownSize = 79;
+            const winFontSize = 90;
+            const goalFontSize = 90;
+            const slashFontSize = 80;
+            const crownOffset = -8;
+
+            // Update CSS variables
+            neonPillElement.style.setProperty('--container-width', containerWidth + 'px');
+            neonPillElement.style.setProperty('--crown-size', crownSize + 'px');
+            neonPillElement.style.setProperty('--win-font-size', winFontSize + 'px');
+            neonPillElement.style.setProperty('--slash-font-size', slashFontSize + 'px');
+            neonPillElement.style.setProperty('--goal-font-size', goalFontSize + 'px');
+            neonPillElement.style.setProperty('--crown-offset', crownOffset + 'px');
+
+            // Calculate positions based on win number length (excluding minus sign)
+            const winLength = Math.abs(winCount).toString().length; // Exclude minus sign
+
+            // Case 1: Show all elements (Icon + Win + Slash + Goal)
+            if (showCrown && showGoal) {
+                console.log('🎯 Layout: Show all elements');
                 
-                if (data) {
-                    if (data.win !== undefined) win = data.win;
-                    if (data.goal !== undefined) goal = data.goal;
-                    if (data.show_crown !== undefined) showCrown = data.show_crown;
-                    if (data.show_goal !== undefined) showGoal = data.show_goal;
-                    updateDisplay();
-                    console.log('📻 OVERLAY: Updated to win=' + win + ', goal=' + goal);
+                const baseSlashPosition = 140; // Base position for 1-digit win
+                const baseGoalPosition = 170; // Base position for 1-digit win
+                
+                // Adjust positions based on win number length
+                let slashPosition = baseSlashPosition + (winLength - 1) * 12.5;
+                let goalPosition = baseGoalPosition + (winLength - 1) * 12.5;
+                
+                // Additional adjustments for specific cases
+                if (winLength === 2) {
+                    slashPosition += 37;
+                    goalPosition += 37;
+                } else if (winLength === 3) {
+                    slashPosition += 72;
+                    goalPosition += 72;
+                } else if (winLength === 4) {
+                    slashPosition += 107.5;
+                    goalPosition += 107.5;
+                } else if (winLength === 5) {
+                    slashPosition += 135.5;
+                    goalPosition += 135.5;
                 }
-            };
+
+                // Special handling for negative numbers and 10000
+                if ((winCount < 0) || (winCount === 10000)) {
+                    slashPosition = 166;
+                    goalPosition = 196;
+                    
+                    if (winCount === 10000) {
+                        slashPosition += 152;
+                        goalPosition += 152;
+                    }
+                    
+                    if (winCount < 0) {
+                        if (winLength === 2) {
+                            slashPosition += 54;
+                            goalPosition += 54;
+                        } else if (winLength === 3) {
+                            slashPosition += 106;
+                            goalPosition += 106;
+                        } else if (winLength === 4) {
+                            slashPosition += 157;
+                            goalPosition += 157;
+                        } else if (winLength === 5) {
+                            slashPosition += 182;
+                            goalPosition += 182;
+                        }
+                    }
+                }
+                
+                // Set positions for show all case
+                document.querySelector('.slash').style.left = slashPosition + 'px';
+                goalNumberElement.style.left = goalPosition + 'px';
+            }
             
-            setTimeout(() => channel.postMessage({ type: 'request-sync' }), 100);
-            setInterval(() => channel.postMessage({ type: 'request-sync' }), 3000);
+            // Case 2: Hide crown, show goal (Win + Slash + Goal)
+            else if (!showCrown && showGoal) {
+                console.log('🎯 Layout: Hide crown, show goal');
+                
+                // When crown is hidden, keep Slash and Goal in original positions
+                const baseSlashPosition = 140; // Keep Slash in original position
+                const baseGoalPosition = 170; // Keep Goal in original position
+                
+                // Adjust positions based on win number length
+                let slashPosition = baseSlashPosition + (winLength - 1) * 12.5;
+                let goalPosition = baseGoalPosition + (winLength - 1) * 12.5;
+                
+                // Additional adjustments for specific cases
+                if (winLength === 2) {
+                    slashPosition += 37;
+                    goalPosition += 37;
+                } else if (winLength === 3) {
+                    slashPosition += 72;
+                    goalPosition += 72;
+                } else if (winLength === 4) {
+                    slashPosition += 107.5;
+                    goalPosition += 107.5;
+                } else if (winLength === 5) {
+                    slashPosition += 135.5;
+                    goalPosition += 135.5;
+                }
+
+                // Special handling for negative numbers and 10000
+                if ((winCount < 0) || (winCount === 10000)) {
+                    slashPosition = 166; // Keep Slash in original position
+                    goalPosition = 196; // Keep Goal in original position
+                    
+                    if (winCount === 10000) {
+                        slashPosition += 152;
+                        goalPosition += 152;
+                    }
+                    
+                    if (winCount < 0) {
+                        if (winLength === 2) {
+                            slashPosition += 54;
+                            goalPosition += 54;
+                        } else if (winLength === 3) {
+                            slashPosition += 106;
+                            goalPosition += 106;
+                        } else if (winLength === 4) {
+                            slashPosition += 157;
+                            goalPosition += 157;
+                        } else if (winLength === 5) {
+                            slashPosition += 182;
+                            goalPosition += 182;
+                        }
+                    }
+                }
+                
+                // Set positions for hide crown case
+                document.querySelector('.slash').style.left = slashPosition + 'px';
+                goalNumberElement.style.left = goalPosition + 'px';
+            }
             
-            console.log('📻 OVERLAY: Ready');
+            // Case 3: Show crown, hide goal (Icon + Win only)
+            else if (showCrown && !showGoal) {
+                console.log('🎯 Layout: Show crown, hide goal');
+                
+                // When goal is hidden, no need to position slash and goal
+                // Just hide them and keep win number in its normal position
+                document.querySelector('.slash').style.left = '0px';
+                goalNumberElement.style.left = '0px';
+            }
+
+            // Update visibility
+            console.log('🎨 Updating visibility - showCrown:', showCrown, 'showGoal:', showGoal);
+            crownIconElement.style.visibility = showCrown ? 'visible' : 'hidden';
+            crownIconElement.style.opacity = showCrown ? '1' : '0';
+            goalNumberElement.style.display = showGoal ? 'block' : 'none';
+            document.querySelector('.slash').style.display = showGoal ? 'block' : 'none';
+
+            // Update numbers
+            winNumberElement.textContent = winCount;
+            goalNumberElement.textContent = goalCount;
+            
+            // Update negative class
+            if (winCount < 0) {
+                winNumberElement.classList.add('negative');
+            } else {
+                winNumberElement.classList.remove('negative');
+            }
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                ws = new WebSocket('ws://localhost:779');
+
+                ws.onopen = () => {
+                    console.log('🔗 WebSocket connected to overlay bridge');
+                    reconnectAttempts = 0;
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('📥 WebSocket received:', data);
+                        console.log('🔍 Raw message:', event.data);
+                        
+                        // Handle direct state object from server
+                        if (data.win !== undefined) {
+                            const newCount = parseInt(data.win);
+                            const difference = newCount - lastWinCount;
+                            console.log('🔢 Win count change:', { newCount, lastWinCount, difference });
+                            if (newCount !== lastWinCount) {
+                                // Update stores first
+                                winCount = newCount;
+                                console.log('🎬 Calling triggerAnimation for win with difference:', difference);
+                                // Trigger animation with the calculated difference
+                                triggerAnimationWithDifference('win', difference);
+                                // Update lastWinCount AFTER animation
+                                lastWinCount = newCount;
+                                updateDisplay();
+                            } else {
+                                console.log('⚠️ Win count unchanged, no animation');
+                            }
+                        }
+                        
+                        if (data.goal !== undefined) {
+                            const newGoal = parseInt(data.goal);
+                            const difference = newGoal - lastGoalCount;
+                            console.log('🔢 Goal count change:', { newGoal, lastGoalCount, difference });
+                            if (newGoal !== lastGoalCount) {
+                                // Update stores first
+                                goalCount = newGoal;
+                                console.log('🎬 Calling triggerAnimation for goal with difference:', difference);
+                                // Trigger animation with the calculated difference
+                                triggerAnimationWithDifference('goal', difference);
+                                // Update lastGoalCount AFTER animation
+                                lastGoalCount = newGoal;
+                                updateDisplay();
+                            } else {
+                                console.log('⚠️ Goal count unchanged, no animation');
+                            }
+                        }
+                        
+                        if (data.show_goal !== undefined && !userToggledGoal) {
+                            console.log('🎯 Updating showGoal:', data.show_goal);
+                            showGoal = data.show_goal;
+                            updateDisplay();
+                        }
+                        
+                        if (data.show_crown !== undefined && !userToggledCrown) {
+                            console.log('👑 Updating showCrown:', data.show_crown);
+                            showCrown = data.show_crown;
+                            updateDisplay();
+                        }
+                        
+                        // Also handle the old format for backward compatibility
+                        if (data.type === 'winCount') {
+                            const newCount = parseInt(data.value);
+                            const difference = newCount - lastWinCount;
+                            console.log('🔢 Win count change (old format):', { newCount, lastWinCount, difference });
+                            if (newCount !== lastWinCount) {
+                                // Update stores first
+                                winCount = newCount;
+                                console.log('🎬 Calling triggerAnimation for win (old format) with difference:', difference);
+                                // Trigger animation with the calculated difference
+                                triggerAnimationWithDifference('win', difference);
+                                // Update lastWinCount AFTER animation
+                                lastWinCount = newCount;
+                                updateDisplay();
+                            } else {
+                                console.log('⚠️ Win count unchanged (old format), no animation');
+                            }
+                        } else if (data.type === 'goalCount') {
+                            const newGoal = parseInt(data.value);
+                            const difference = newGoal - lastGoalCount;
+                            console.log('🔢 Goal count change (old format):', { newGoal, lastGoalCount, difference });
+                            if (newGoal !== lastGoalCount) {
+                                // Update stores first
+                                goalCount = newGoal;
+                                console.log('🎬 Calling triggerAnimation for goal (old format) with difference:', difference);
+                                // Trigger animation with the calculated difference
+                                triggerAnimationWithDifference('goal', difference);
+                                // Update lastGoalCount AFTER animation
+                                lastGoalCount = newGoal;
+                                updateDisplay();
+                            } else {
+                                console.log('⚠️ Goal count unchanged (old format), no animation');
+                            }
+                        } else if (data.type === 'compact') {
+                            isCompact = data.value;
+                        }
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                    }
+                };
+
+                ws.onclose = () => {
+                    console.log('🔗 WebSocket disconnected from overlay bridge');
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        setTimeout(() => {
+                            reconnectAttempts++;
+                            connectWebSocket();
+                        }, reconnectDelay);
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error('❌ WebSocket error:', error);
+                };
+            } catch (error) {
+                console.error('❌ Failed to connect WebSocket:', error);
+            }
+        }
+
+        // AAA-level Animation System with difference
+        function triggerAnimationWithDifference(type, difference) {
+            console.log('🎬 Animation triggered with difference:', type, 'Difference:', difference);
+            console.log('🔍 Animation states:', { isWinAnimating, isGoalAnimating });
+            
+            if (type === 'win' && isWinAnimating) {
+                console.log('🚫 Win animation already in progress, skipping');
+                return;
+            }
+            
+            if (type === 'goal' && isGoalAnimating) {
+                console.log('🚫 Goal animation already in progress, skipping');
+                return;
+            }
+            
+            if (difference === 0) {
+                console.log('🚫 No difference in values, skipping animation');
+                return;
+            }
+            
+            const animationType = difference > 0 ? 'increase' : 'decrease';
+            const isLargeChange = Math.abs(difference) >= 10;
+            
+            // เล่นเสียงตามประเภท
+            if (difference > 0) {
+                increaseAudio.currentTime = 0;
+                increaseAudio.play();
+            } else if (difference < 0) {
+                decreaseAudio.currentTime = 0;
+                decreaseAudio.play();
+            }
+            
+            console.log('🎭 Animation type:', animationType, 'Large change:', isLargeChange);
+            
+            if (type === 'win') {
+                isWinAnimating = true;
+                console.log('✅ Win animation started');
+            } else {
+                isGoalAnimating = true;
+                console.log('✅ Goal animation started');
+            }
+            
+            // Trigger simple animation
+            console.log('🚀 Triggering simple animation...');
+            triggerNumberAnimation(type, animationType, isLargeChange);
+            
+            // Reset animation states - much faster reset
+            setTimeout(() => {
+                if (type === 'win') {
+                    isWinAnimating = false;
+                    console.log('🔄 Win animation reset');
+                } else {
+                    isGoalAnimating = false;
+                    console.log('🔄 Goal animation reset');
+                }
+            }, 100);
+        }
+
+        // Enhanced number animation with multiple effects
+        function triggerNumberAnimation(type, animationType, isLarge = false) {
+            const element = document.getElementById(`${type}-number`);
+            if (!element) {
+                console.log('❌ Element not found for number animation:', `${type}-number`);
+                return;
+            }
+            
+            console.log('🎭 Applying simple bounce animation to:', element, 'Type:', animationType);
+            
+            // เฉพาะ Scale Punch เท่านั้น - เด้งเร็วและทันใจ
+            const scaleIntensity = 1.1; // เด้งเบาๆ เหมือนกันทุกครั้ง
+            const duration = 120; // เร็วขึ้นมาก เพื่อให้ทันกับการกดคีย์ลัด
+            
+            // Add CSS animation classes
+            element.classList.add('animating');
+            
+            // เฉพาะ Scale Punch - ไม่มีเอฟเฟคอื่น
+            triggerScalePunch(element, scaleIntensity, duration);
+            
+            // Remove animation classes after duration
+            setTimeout(() => {
+                element.classList.remove('animating');
+                console.log('🧹 Removed animation classes from:', element);
+            }, duration);
         }
         
-        // เรียกใช้ function ลบพื้นหลัง
-        removeAllBackgrounds();
-        
-        // ตรวจสอบและลบพื้นหลังทุก 100ms ป้องกัน extension เพิ่มเข้ามา
-        setInterval(removeAllBackgrounds, 100);
-        
-        updateDisplay();
+        // Scale Punch Effect - เด้งแรงๆ แบบเรียบง่าย ไม่กระพิบ
+        function triggerScalePunch(element, intensity, duration) {
+            console.log('👊 Simple Scale Punch triggered:', element.className, 'Intensity:', intensity, 'Duration:', duration);
+            
+            // เด้งแรงๆ แบบเรียบง่าย - ไม่หมุน ไม่เปลี่ยนสี
+            const transform = `scale(${intensity})`;
+            
+            element.style.transform = transform;
+            console.log('🎯 Applied simple scale punch:', { transform });
+            
+            // กลับปกติเร็วๆ - ทันใจ
+            setTimeout(() => {
+                element.style.transform = 'scale(1)';
+                console.log('🏁 Scale punch completed');
+            }, duration * 0.6); // กลับปกติเร็วกว่า duration เล็กน้อย
+        }
+
+        // Load initial data from localStorage
+        function loadInitialData() {
+            try {
+                const storedWinCount = localStorage.getItem('winCount');
+                const storedGoalCount = localStorage.getItem('goalCount');
+                const storedShowCrown = localStorage.getItem('showCrown');
+                const storedShowGoal = localStorage.getItem('showGoal');
+                const storedCompact = localStorage.getItem('isCompact');
+                
+                if (storedWinCount) {
+                    const count = parseInt(storedWinCount);
+                    winCount = count;
+                    lastWinCount = count;
+                }
+                
+                if (storedGoalCount) {
+                    const goal = parseInt(storedGoalCount);
+                    goalCount = goal;
+                    lastGoalCount = goal;
+                }
+                
+                if (storedShowCrown !== null) {
+                    showCrown = storedShowCrown === 'true';
+                    userToggledCrown = true;
+                }
+                
+                if (storedShowGoal !== null) {
+                    showGoal = storedShowGoal === 'true';
+                    userToggledGoal = true;
+                }
+                
+                if (storedCompact) {
+                    isCompact = storedCompact === 'true';
+                }
+            } catch (error) {
+                console.error('Error loading initial data:', error);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 Overlay HTML loaded');
+            loadInitialData();
+            updateDisplay();
+            connectWebSocket();
+            
+            // Test WebSocket connection after 2 seconds
+            setTimeout(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    console.log('✅ WebSocket connection is working');
+                } else {
+                    console.error('❌ WebSocket connection failed');
+                }
+            }, 2000);
+        });
+
+        // Event handler สำหรับ toggle switch
+        function onToggleGoal() {
+            showGoal = !showGoal;
+            userToggledGoal = true;
+            localStorage.setItem('showGoal', showGoal);
+            updateDisplay();
+            // ส่ง message sync ไป backend
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'toggle_goal', value: showGoal }));
+            }
+        }
+        function onToggleCrown() {
+            showCrown = !showCrown;
+            userToggledCrown = true;
+            localStorage.setItem('showCrown', showCrown);
+            updateDisplay();
+            // ส่ง message sync ไป backend
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'toggle_crown', value: showCrown }));
+            }
+        }
     </script>
 </body>
-</html>
+</html> 

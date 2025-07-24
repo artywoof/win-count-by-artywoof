@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
@@ -24,6 +24,11 @@ use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +79,7 @@ impl Default for HotkeyConfig {
     }
 }
 
-type SharedWinState = Mutex<WinState>;
+type SharedWinState = Arc<Mutex<WinState>>;
 type KeyTrackerMap = Arc<Mutex<HashMap<String, KeyEventTracker>>>;
 
 fn get_state_path() -> PathBuf {
@@ -233,12 +238,35 @@ fn calculate_dynamic_step(tracker: &KeyEventTracker) -> i32 {
 // Helper function for win state mutation and event emitting
 fn change_win_with_step(app: &tauri::AppHandle, state: &SharedWinState, broadcast_tx: &tokio::sync::broadcast::Sender<WinState>, delta: i32, step: i32) {
     let mut s = state.lock().unwrap();
-    let new_win = (s.win + (delta * step)).max(-9999).min(9999);  // Support negative values
+    let new_win = (s.win + (delta * step)).max(-10000).min(10000);  // Support negative values, match set_win range
     s.win = new_win;
     let _ = app.emit("state-updated", s.clone());
     let path = get_state_path();
     save_state(&path, &s);
     let _ = broadcast_tx.send(s.clone());
+    
+    // Auto-save to current preset (same as set_win)
+    let current_preset_name = s.current_preset.clone();
+    let current_state = s.clone();
+    drop(s); // Release lock before calling save_preset
+    
+    if let Ok(mut presets) = load_presets() {
+        if let Some(preset) = presets.iter_mut().find(|p| p.name == current_preset_name) {
+            preset.win = current_state.win;
+            preset.goal = current_state.goal;
+            preset.show_goal = current_state.show_goal;
+            preset.show_crown = current_state.show_crown;
+            
+            // Save updated presets
+            let presets_path = std::env::temp_dir().join("win_count_presets.json");
+            if let Ok(json) = serde_json::to_string_pretty(&presets) {
+                let _ = fs::write(&presets_path, json);
+                println!("💾 Auto-saved hotkey change to preset: {}", current_preset_name);
+            }
+        } else {
+            println!("⚠️ Preset '{}' not found for auto-save, hotkey change saved to state only", current_preset_name);
+        }
+    }
     
     // Emit sound event
     if delta > 0 {
@@ -278,26 +306,70 @@ fn decrease_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>,
 #[tauri::command]
 fn set_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, value: i32) {
     let mut s = state.lock().unwrap();
-    // Clamp value between -9999 and 9999
-    let new_win = value.max(-9999).min(9999);
+    // Clamp value between -10000 and 10000
+    let new_win = value.max(-10000).min(10000);
     s.win = new_win;
     let _ = app.emit("state-updated", s.clone());
     let path = get_state_path();
     save_state(&path, &s);
     let _ = broadcast_tx.send(s.clone());
+    
+    // Auto-save to current preset
+    let current_preset_name = s.current_preset.clone();
+    let current_state = s.clone();
+    drop(s); // Release lock before calling save_preset
+    
+    if let Ok(mut presets) = load_presets() {
+        if let Some(preset) = presets.iter_mut().find(|p| p.name == current_preset_name) {
+            preset.win = current_state.win;
+            preset.goal = current_state.goal;
+            preset.show_goal = current_state.show_goal;
+            preset.show_crown = current_state.show_crown;
+            
+            // Save updated presets
+            let presets_path = std::env::temp_dir().join("win_count_presets.json");
+            if let Ok(json) = serde_json::to_string_pretty(&presets) {
+                let _ = fs::write(&presets_path, json);
+                println!("💾 Auto-saved to preset: {}", current_preset_name);
+            }
+        }
+    }
+    
     println!("🎯 Win set to: {}", new_win);
 }
 
 #[tauri::command]
 fn set_goal(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, value: i32) {
     let mut s = state.lock().unwrap();
-    // Clamp value between -9999 and 9999  
-    let new_goal = value.max(-9999).min(9999);
+    // Clamp value between -10000 and 10000  
+    let new_goal = value.max(-10000).min(10000);
     s.goal = new_goal;
     let _ = app.emit("state-updated", s.clone());
     let path = get_state_path();
     save_state(&path, &s);
     let _ = broadcast_tx.send(s.clone());
+    
+    // Auto-save to current preset
+    let current_preset_name = s.current_preset.clone();
+    let current_state = s.clone();
+    drop(s); // Release lock before calling save_preset
+    
+    if let Ok(mut presets) = load_presets() {
+        if let Some(preset) = presets.iter_mut().find(|p| p.name == current_preset_name) {
+            preset.win = current_state.win;
+            preset.goal = current_state.goal;
+            preset.show_goal = current_state.show_goal;
+            preset.show_crown = current_state.show_crown;
+            
+            // Save updated presets
+            let presets_path = std::env::temp_dir().join("win_count_presets.json");
+            if let Ok(json) = serde_json::to_string_pretty(&presets) {
+                let _ = fs::write(&presets_path, json);
+                println!("💾 Auto-saved to preset: {}", current_preset_name);
+            }
+        }
+    }
+    
     println!("🎯 Goal set to: {}", new_goal);
 }
 
@@ -499,19 +571,147 @@ fn play_test_sounds(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn start_ws_server(broadcast_tx: broadcast::Sender<WinState>) {
+fn start_http_server() {
     thread::spawn(move || {
         let rt = Runtime::new().unwrap();
         rt.block_on(async move {
             use tokio::net::TcpListener;
-            println!("🌐 Starting WebSocket server on 127.0.0.1:8080");
-            let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            
+            println!("🌐 Starting HTTP server on 127.0.0.1:777");
+            let listener = TcpListener::bind("127.0.0.1:777").await.unwrap();
+            
+            loop {
+                match listener.accept().await {
+                    Ok((mut stream, addr)) => {
+                        println!("📄 HTTP connection from: {}", addr);
+                        
+                        tokio::spawn(async move {
+                            let mut buffer = [0; 1024];
+                            match stream.read(&mut buffer).await {
+                                Ok(n) => {
+                                    let request = String::from_utf8_lossy(&buffer[..n]);
+                                    
+                                    if request.starts_with("GET /overlay.html") {
+                                        println!("📄 Serving overlay.html");
+                                        
+                                        // Read overlay.html file
+                                        match std::fs::read_to_string("../static/overlay.html") {
+                                            Ok(content) => {
+                                                let response = format!(
+                                                    "HTTP/1.1 200 OK\r\n\
+                                                    Content-Type: text/html; charset=utf-8\r\n\
+                                                    Content-Length: {}\r\n\
+                                                    Access-Control-Allow-Origin: *\r\n\
+                                                    Connection: close\r\n\
+                                                    \r\n\
+                                                    {}",
+                                                    content.len(),
+                                                    content
+                                                );
+                                                
+                                                if let Err(e) = stream.write_all(response.as_bytes()).await {
+                                                    println!("❌ Failed to send HTTP response: {}", e);
+                                                }
+                                            }
+                                            Err(e) => {
+                                                println!("❌ Failed to read overlay.html: {}", e);
+                                                let response = "HTTP/1.1 404 Not Found\r\n\r\n404 - File not found";
+                                                let _ = stream.write_all(response.as_bytes()).await;
+                                            }
+                                        }
+                                    } else if request.starts_with("GET /assets/") {
+                                        // Handle static assets (images, fonts, etc.)
+                                        let path_start = request.find("GET ").unwrap() + 4;
+                                        let path_end = request.find(" HTTP").unwrap();
+                                        let asset_path = &request[path_start..path_end];
+                                        let file_path = format!("../static{}", asset_path);
+                                        
+                                        println!("📁 Serving asset: {}", file_path);
+                                        
+                                        match std::fs::read(&file_path) {
+                                            Ok(content) => {
+                                                let content_type = if asset_path.ends_with(".png") {
+                                                    "image/png"
+                                                } else if asset_path.ends_with(".jpg") || asset_path.ends_with(".jpeg") {
+                                                    "image/jpeg"
+                                                } else if asset_path.ends_with(".svg") {
+                                                    "image/svg+xml"
+                                                } else if asset_path.ends_with(".css") {
+                                                    "text/css"
+                                                } else if asset_path.ends_with(".js") {
+                                                    "application/javascript"
+                                                } else if asset_path.ends_with(".ttf") {
+                                                    "font/ttf"
+                                                } else if asset_path.ends_with(".woff") {
+                                                    "font/woff"
+                                                } else if asset_path.ends_with(".woff2") {
+                                                    "font/woff2"
+                                                } else {
+                                                    "application/octet-stream"
+                                                };
+                                                
+                                                let response = format!(
+                                                    "HTTP/1.1 200 OK\r\n\
+                                                    Content-Type: {}\r\n\
+                                                    Content-Length: {}\r\n\
+                                                    Access-Control-Allow-Origin: *\r\n\
+                                                    Connection: close\r\n\
+                                                    \r\n",
+                                                    content_type,
+                                                    content.len()
+                                                );
+                                                
+                                                if let Err(e) = stream.write_all(response.as_bytes()).await {
+                                                    println!("❌ Failed to send HTTP response header: {}", e);
+                                                } else if let Err(e) = stream.write_all(&content).await {
+                                                    println!("❌ Failed to send HTTP response body: {}", e);
+                                                }
+                                            }
+                                            Err(e) => {
+                                                println!("❌ Failed to read asset {}: {}", file_path, e);
+                                                let response = "HTTP/1.1 404 Not Found\r\n\r\n404 - Asset not found";
+                                                let _ = stream.write_all(response.as_bytes()).await;
+                                            }
+                                        }
+                                    } else if request.starts_with("GET /") {
+                                        // Redirect root to overlay.html
+                                        let response = "HTTP/1.1 302 Found\r\nLocation: /overlay.html\r\nConnection: close\r\n\r\n";
+                                        let _ = stream.write_all(response.as_bytes()).await;
+                                    } else {
+                                        let response = "HTTP/1.1 404 Not Found\r\n\r\n404 - Not found";
+                                        let _ = stream.write_all(response.as_bytes()).await;
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("❌ Failed to read HTTP request: {}", e);
+                                }
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        println!("❌ Failed to accept HTTP connection: {}", e);
+                    }
+                }
+            }
+        });
+    });
+}
+
+fn start_ws_server(shared_state: Arc<Mutex<WinState>>, broadcast_tx: broadcast::Sender<WinState>) {
+    thread::spawn(move || {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async move {
+            use tokio::net::TcpListener;
+            println!("🌐 Starting WebSocket server on 127.0.0.1:779");
+            let listener = TcpListener::bind("127.0.0.1:779").await.unwrap();
             
             loop {
                 match listener.accept().await {
                     Ok((stream, addr)) => {
                         println!("🔗 New WebSocket connection from: {}", addr);
                         let broadcast_tx_clone = broadcast_tx.clone();
+                        let shared_state_clone = shared_state.clone();
                         
                         tokio::spawn(async move {
                             match accept_async(stream).await {
@@ -519,17 +719,25 @@ fn start_ws_server(broadcast_tx: broadcast::Sender<WinState>) {
                                     let (mut ws_write, mut ws_read) = ws_stream.split();
                                     let mut rx = broadcast_tx_clone.subscribe();
                                     
-                                    // Send initial state (default state)
-                                    let initial_state = WinState::default();
-                                    let initial_msg = serde_json::to_string(&initial_state).unwrap();
-                                    let _ = ws_write.send(Message::Text(initial_msg)).await;
+                                    // ส่ง state ปัจจุบันจาก shared_state ให้ overlay ทุกครั้งที่เชื่อมต่อใหม่
+                                    let current_state = {
+                                        let state_guard = shared_state_clone.lock().unwrap();
+                                        (*state_guard).clone()
+                                    };
+                                    let current_msg = serde_json::to_string(&current_state).unwrap();
+                                    let _ = ws_write.send(Message::Text(current_msg)).await;
+                                    println!("📡 Sent current state to new connection: {:?}", current_state);
+                                    
+                                    // สร้าง receiver ใหม่สำหรับ send task
+                                    let mut rx_send = broadcast_tx_clone.subscribe();
+                                    let mut ws_write_send = ws_write;
                                     
                                     // Task to send state updates
                                     let send_task = tokio::spawn(async move {
-                                        while let Ok(state) = rx.recv().await {
+                                        while let Ok(state) = rx_send.recv().await {
                                             println!("📡 Sending state update: {:?}", state);
                                             let msg = serde_json::to_string(&state).unwrap();
-                                            match ws_write.send(Message::Text(msg)).await {
+                                            match ws_write_send.send(Message::Text(msg)).await {
                                                 Ok(_) => {},
                                                 Err(e) => {
                                                     println!("❌ Failed to send message: {}", e);
@@ -540,12 +748,73 @@ fn start_ws_server(broadcast_tx: broadcast::Sender<WinState>) {
                                         println!("📡 Send task ended");
                                     });
                                     
+                                    // สร้าง receiver ใหม่สำหรับ read task
+                                    let mut rx_read = broadcast_tx_clone.subscribe();
+                                    
                                     // Task to handle incoming messages and keepalive
                                     let read_task = tokio::spawn(async move {
                                         while let Some(msg) = ws_read.next().await {
                                             match msg {
-                                                Ok(Message::Text(_)) => {
-                                                    // Handle text messages if needed
+                                                Ok(Message::Text(text)) => {
+                                                    // จัดการคำขอข้อมูลปัจจุบัน
+                                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                                        if let Some(msg_type) = json.get("type").and_then(|v| v.as_str()) {
+                                                            match msg_type {
+                                                                "toggle_goal" => {
+                                                                    if let Some(val) = json.get("value").and_then(|v| v.as_bool()) {
+                                                                        let mut state = shared_state_clone.lock().unwrap();
+                                                                        state.show_goal = val;
+                                                                        let _ = broadcast_tx_clone.send(state.clone());
+                                                                        println!("🔄 show_goal updated via overlay: {}", val);
+                                                                    }
+                                                                },
+                                                                "toggle_crown" => {
+                                                                    if let Some(val) = json.get("value").and_then(|v| v.as_bool()) {
+                                                                        let mut state = shared_state_clone.lock().unwrap();
+                                                                        state.show_crown = val;
+                                                                        let _ = broadcast_tx_clone.send(state.clone());
+                                                                        println!("🔄 show_crown updated via overlay: {}", val);
+                                                                    }
+                                                                },
+                                                                "request_current_data" => {
+                                                                    println!("📤 Received request for current data (no reply, client will get initial state)");
+                                                                },
+                                                                "update" => {
+                                                                    // Handle state update from main app
+                                                                    println!("📥 Received update message: {}", text);
+                                                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                                                        println!("📥 Parsed JSON: {:?}", json);
+                                                                        // Extract WinState fields from the update message
+                                                                        if let (Some(win), Some(goal), Some(show_goal), Some(show_crown), Some(current_preset)) = (
+                                                                            json.get("win").and_then(|v| v.as_i64()).map(|v| v as i32),
+                                                                            json.get("goal").and_then(|v| v.as_i64()).map(|v| v as i32),
+                                                                            json.get("show_goal").and_then(|v| v.as_bool()),
+                                                                            json.get("show_crown").and_then(|v| v.as_bool()),
+                                                                            json.get("current_preset").and_then(|v| v.as_str())
+                                                                        ) {
+                                                                            let mut state = shared_state_clone.lock().unwrap();
+                                                                            state.win = win;
+                                                                            state.goal = goal;
+                                                                            state.show_goal = show_goal;
+                                                                            state.show_crown = show_crown;
+                                                                            state.current_preset = current_preset.to_string();
+                                                                            let _ = broadcast_tx_clone.send(state.clone());
+                                                                            println!("🔄 State updated via WebSocket: {:?}", state);
+                                                                        } else {
+                                                                            println!("❌ Failed to extract WinState fields from update message");
+                                                                            println!("❌ Available fields: win={:?}, goal={:?}, show_goal={:?}, show_crown={:?}, current_preset={:?}",
+                                                                                json.get("win"), json.get("goal"), json.get("show_goal"), json.get("show_crown"), json.get("current_preset"));
+                                                                        }
+                                                                    } else {
+                                                                        println!("❌ Failed to parse update message as JSON");
+                                                                    }
+                                                                },
+                                                                _ => {
+                                                                    println!("📥 Received unknown message type: {}", msg_type);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 },
                                                 Ok(Message::Ping(_)) => {
                                                     println!("🏓 Received ping, sending pong");
@@ -595,16 +864,31 @@ fn main() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let path = get_state_path();
-    let initial = load_state(&path);
+    let mut initial = load_state(&path);
+    
+    // Validate current_preset exists in presets, fallback to Default if not
+    if let Ok(presets) = load_presets() {
+        if !presets.iter().any(|p| p.name == initial.current_preset) {
+            println!("⚠️ Current preset '{}' not found in presets, falling back to 'Default'", initial.current_preset);
+            initial.current_preset = "Default".to_string();
+            
+            // Update the state file with the corrected preset
+            save_state(&path, &initial);
+        }
+    }
+    
     let shared_state = Arc::new(Mutex::new(initial));
     let (broadcast_tx, _broadcast_rx) = broadcast::channel::<WinState>(32);
     let key_tracker: KeyTrackerMap = Arc::new(Mutex::new(HashMap::new()));
     
+    // Start HTTP server for overlay.html
+    start_http_server();
+    
     // Start WebSocket server
-    start_ws_server(broadcast_tx.clone());
+    start_ws_server(shared_state.clone(), broadcast_tx.clone());
     
     tauri::Builder::default()
-        .manage(Mutex::new(load_state(&get_state_path())))
+        .manage(shared_state.clone())
         .manage(broadcast_tx.clone())
         .manage(key_tracker.clone())
         .plugin(tauri_plugin_opener::init())
@@ -617,7 +901,7 @@ pub fn run() {
             let broadcast_tx = broadcast_tx.clone();
             move |app| {
                 let app_handle: Arc<tauri::AppHandle> = Arc::new(app.handle().clone());
-                let state: Arc<SharedWinState> = Arc::clone(&shared_state);
+                let state: SharedWinState = Arc::clone(&shared_state);
                 let gs = app_handle.global_shortcut();
                 
                 println!("🎮 Registering dynamic global shortcuts...");
@@ -628,7 +912,7 @@ pub fn run() {
                 
                 match gs.on_shortcuts(["Alt+Equal", "Alt+Minus", "Shift+Alt+Equal", "Shift+Alt+Minus"], {
                     let app_handle: Arc<tauri::AppHandle> = Arc::clone(&app_handle);
-                    let state: Arc<SharedWinState> = Arc::clone(&state);
+                    let state: SharedWinState = Arc::clone(&state);
                     let broadcast_tx = broadcast_tx.clone();
                     let key_tracker = key_tracker.clone();
                     move |_app, shortcut, _event| {
@@ -636,7 +920,7 @@ pub fn run() {
                         // ZERO tolerance for non-transitions
                         
                         let handle: Arc<tauri::AppHandle> = Arc::clone(&app_handle);
-                        let win_state: Arc<SharedWinState> = Arc::clone(&state);
+                        let win_state: SharedWinState = Arc::clone(&state);
                         let broadcast_tx = broadcast_tx.clone();
                         let key_tracker = key_tracker.clone();
                         let shortcut_str = shortcut.to_string();

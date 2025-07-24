@@ -62,15 +62,28 @@ class AudioManager {
   }
 
   private createBeepSound(frequency: number, duration: number) {
-    if (!this.settings.enabled) return;
+    console.log(`🔊 AudioManager: createBeepSound called - frequency: ${frequency}, duration: ${duration}, enabled: ${this.settings.enabled}`);
+    
+    if (!this.settings.enabled) {
+      console.log('🔊 AudioManager: Audio disabled, skipping beep sound');
+      return;
+    }
     
     try {
       if (!audioCtx) {
+        console.log('🔊 AudioManager: Creating new AudioContext');
         const AC = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AC) return;
+        if (!AC) {
+          console.error('🔊 AudioManager: AudioContext not available');
+          return;
+        }
         audioCtx = new AC();
+        console.log('🔊 AudioManager: AudioContext created successfully');
       }
+      
       const audioContext = audioCtx;
+      console.log('🔊 AudioManager: AudioContext state:', audioContext.state);
+      
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       
@@ -81,18 +94,24 @@ class AudioManager {
       oscillator.type = 'sine';
       
       const volume = this.settings.volume * 0.3;
+      console.log(`🔊 AudioManager: Setting volume to ${volume} (settings: ${this.settings.volume})`);
+      
       gainNode.gain.setValueAtTime(0, audioContext.currentTime);
       gainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.01);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
       
       oscillator.start();
       oscillator.stop(audioContext.currentTime + duration);
+      
+      console.log(`🔊 AudioManager: Beep sound started - frequency: ${frequency}, duration: ${duration}, volume: ${volume}`);
     } catch (error) {
-      console.warn('Failed to play beep sound:', error);
+      console.error('🔊 AudioManager: Failed to play beep sound:', error);
     }
   }
 
   async play(soundName: string, forceDefault: boolean = false): Promise<boolean> {
+    console.log(`🔊 AudioManager: Attempting to play sound '${soundName}', enabled: ${this.settings.enabled}, volume: ${this.settings.volume}`);
+    
     if (!this.settings.enabled) {
       console.warn('🔊 AudioManager: Audio is disabled');
       return false;
@@ -114,17 +133,22 @@ class AudioManager {
 
     // Play default sounds
     try {
+      console.log(`🔊 AudioManager: Playing default sound '${soundName}'`);
       switch (soundName) {
         case 'increase':
+          console.log('🔊 AudioManager: Creating beep sound - frequency: 800, duration: 0.1');
           this.createBeepSound(800, 0.1);
           break;
         case 'decrease':
+          console.log('🔊 AudioManager: Creating beep sound - frequency: 400, duration: 0.1');
           this.createBeepSound(400, 0.1);
           break;
         case 'increment10':
+          console.log('🔊 AudioManager: Creating beep sound - frequency: 1000, duration: 0.15');
           this.createBeepSound(1000, 0.15);
           break;
         case 'decrement10':
+          console.log('🔊 AudioManager: Creating beep sound - frequency: 300, duration: 0.15');
           this.createBeepSound(300, 0.15);
           break;
         case 'error':
@@ -137,6 +161,7 @@ class AudioManager {
           console.warn(`🔊 AudioManager: Unknown sound: ${soundName}`);
           return false;
       }
+      console.log(`🔊 AudioManager: Successfully initiated sound '${soundName}'`);
       return true;
     } catch (error) {
       console.error(`🔊 AudioManager: Failed to play default sound '${soundName}':`, error);

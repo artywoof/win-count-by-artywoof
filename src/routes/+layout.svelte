@@ -1,14 +1,40 @@
 <script>
   import "../app.css";
+  import { page } from '$app/stores';
+  
+  $: isOverlay = $page.route.id === '/overlay';
 </script>
 
+{#if isOverlay}
+  <!-- Overlay page - no gradient border, fully transparent -->
+  <div class="overlay-root">
+    <slot />
+  </div>
+{:else}
+  <!-- Normal pages - with gradient border -->
 <div class="gradient-border-container">
   <div class="w-full h-full bg-[#040319] rounded-[35px] overflow-visible relative z-50 box-border">
     <slot />
   </div>
 </div>
+{/if}
 
 <style>
+  .overlay-root {
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-sizing: border-box;
+    z-index: 1;
+  }
+  
   .gradient-border-container {
     width: 100vw;
     height: 100vh;
