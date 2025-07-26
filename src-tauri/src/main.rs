@@ -16,6 +16,9 @@ use tokio::runtime::Runtime;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::accept_async;
 use serde_json;
+use std::env;
+use std::process::Command;
+use sha2::{Sha256, Digest};
 
 #[cfg(windows)]
 use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
@@ -29,6 +32,146 @@ fn greet(name: &str) -> String {
 #[tauri::command]
 fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+// License management functions
+#[tauri::command]
+fn get_license_key() -> Result<String, String> {
+    let license_path = std::env::temp_dir().join("win_count_license.json");
+    if license_path.exists() {
+        let license_data_str = fs::read_to_string(license_path)
+            .map_err(|_| "No license key found".to_string())?;
+        
+        let license_data: LicenseData = serde_json::from_str(&license_data_str)
+            .map_err(|_| "Invalid license data format".to_string())?;
+        
+        Ok(license_data.key)
+    } else {
+        Err("No license key found".to_string())
+    }
+}
+
+#[tauri::command]
+fn save_license_key(key: String) -> Result<(), String> {
+    let machine_id = get_machine_id()?;
+    
+    let license_data = LicenseData {
+        key: key.clone(),
+        machine_id: machine_id,
+        activated_at: chrono::Utc::now().to_rfc3339(),
+    };
+    
+    let license_json = serde_json::to_string(&license_data)
+        .map_err(|e| format!("Failed to serialize license data: {}", e))?;
+    
+    let license_path = std::env::temp_dir().join("win_count_license.json");
+    fs::write(license_path, license_json)
+        .map_err(|e| format!("Failed to save license key: {}", e))
+}
+
+#[tauri::command]
+fn remove_license_key() -> Result<(), String> {
+    let license_path = std::env::temp_dir().join("win_count_license.json");
+    if license_path.exists() {
+        fs::remove_file(license_path)
+            .map_err(|e| format!("Failed to remove license key: {}", e))
+    } else {
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn get_machine_id() -> Result<String, String> {
+    let mut hasher = Sha256::new();
+    
+    // Get computer name
+    if let Ok(computer_name) = env::var("COMPUTERNAME") {
+        hasher.update(computer_name.as_bytes());
+    }
+    
+    // Get user name
+    if let Ok(user_name) = env::var("USERNAME") {
+        hasher.update(user_name.as_bytes());
+    }
+    
+    // Get Windows product ID (if available)
+    #[cfg(windows)]
+    {
+        if let Ok(output) = Command::new("wmic").args(&["csproduct", "get", "UUID", "/value"]).output() {
+            if let Ok(output_str) = String::from_utf8(output.stdout) {
+                if let Some(uuid_line) = output_str.lines().find(|line| line.starts_with("UUID=")) {
+                    if let Some(uuid) = uuid_line.split('=').nth(1) {
+                        hasher.update(uuid.as_bytes());
+                    }
+                }
+            }
+        }
+    }
+    
+    // Get processor info
+    if let Ok(output) = Command::new("wmic").args(&["cpu", "get", "ProcessorId", "/value"]).output() {
+        if let Ok(output_str) = String::from_utf8(output.stdout) {
+            if let Some(processor_line) = output_str.lines().find(|line| line.starts_with("ProcessorId=")) {
+                if let Some(processor_id) = processor_line.split('=').nth(1) {
+                    hasher.update(processor_id.as_bytes());
+                }
+            }
+        }
+    }
+    
+    let result = hasher.finalize();
+    Ok(format!("{:x}", result)[..16].to_string()) // Return first 16 characters
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LicenseData {
+    key: String,
+    machine_id: String,
+    activated_at: String,
+}
+
+#[tauri::command]
+fn validate_license_key(key: String) -> Result<bool, String> {
+    // Get current machine ID
+    let current_machine_id = get_machine_id()?;
+    
+    // Load existing license data
+    let license_path = std::env::temp_dir().join("win_count_license.json");
+    if license_path.exists() {
+        if let Ok(license_data_str) = fs::read_to_string(&license_path) {
+            if let Ok(license_data) = serde_json::from_str::<LicenseData>(&license_data_str) {
+                // Check if this is the same machine
+                if license_data.machine_id == current_machine_id {
+                    // Check if the key is valid
+                    let valid_key = "ARTY-WOOF-2024-WIN";
+                    return Ok(license_data.key == valid_key);
+                } else {
+                    return Err("License key is already activated on another machine".to_string());
+                }
+            }
+        }
+    }
+    
+    // If no existing license, this is a new activation
+    let valid_key = "ARTY-WOOF-2024-WIN";
+    if key == valid_key {
+        // Save license data with machine ID
+        let license_data = LicenseData {
+            key: key.clone(),
+            machine_id: current_machine_id,
+            activated_at: chrono::Utc::now().to_rfc3339(),
+        };
+        
+        let license_json = serde_json::to_string(&license_data)
+            .map_err(|e| format!("Failed to serialize license data: {}", e))?;
+        
+        fs::write(&license_path, license_json)
+            .map_err(|e| format!("Failed to save license data: {}", e))?;
+        
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -265,6 +408,23 @@ fn change_win_with_step(app: &tauri::AppHandle, state: &SharedWinState, broadcas
             }
         } else {
             println!("⚠️ Preset '{}' not found for auto-save, hotkey change saved to state only", current_preset_name);
+            // Try to create the preset if it doesn't exist
+            let new_preset = PresetData {
+                name: current_preset_name.clone(),
+                win: current_state.win,
+                goal: current_state.goal,
+                show_goal: current_state.show_goal,
+                show_crown: current_state.show_crown,
+                hotkeys: HotkeyConfig::default(),
+            };
+            presets.push(new_preset);
+            
+            // Save updated presets
+            let presets_path = std::env::temp_dir().join("win_count_presets.json");
+            if let Ok(json) = serde_json::to_string_pretty(&presets) {
+                let _ = fs::write(&presets_path, json);
+                println!("💾 Created and auto-saved to new preset: {}", current_preset_name);
+            }
         }
     }
     
@@ -428,6 +588,8 @@ async fn copy_overlay_link() -> Result<String, String> {
 fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(), String> {
     let presets_path = std::env::temp_dir().join("win_count_presets.json");
     
+    println!("🔴 Attempting to save preset: {:?}", preset);
+    
     // Load existing presets
     let mut presets: Vec<PresetData> = if presets_path.exists() {
         let json = fs::read_to_string(&presets_path)
@@ -452,7 +614,7 @@ fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(
     // Save presets
     let json = serde_json::to_string_pretty(&presets)
         .map_err(|e| format!("Failed to serialize presets: {}", e))?;
-    fs::write(&presets_path, json)
+    fs::write(&presets_path, &json)
         .map_err(|e| format!("Failed to save presets: {}", e))?;
     
     // Update current state if this is the active preset
@@ -464,7 +626,7 @@ fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(
         s.show_crown = preset.show_crown;
     }
     
-    println!("💾 Saved preset: {}", preset.name);
+    println!("💾 Saved preset: {} | Win: {} | Goal: {}", preset.name, preset.win, preset.goal);
     Ok(())
 }
 
@@ -472,9 +634,14 @@ fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(
 fn load_presets() -> Result<Vec<PresetData>, String> {
     let presets_path = std::env::temp_dir().join("win_count_presets.json");
     
+    println!("📋 Loading presets from: {:?}", presets_path);
+    
     let mut presets: Vec<PresetData> = if presets_path.exists() {
         let json = fs::read_to_string(&presets_path)
             .map_err(|e| format!("Failed to read presets: {}", e))?;
+        
+        println!("📄 Presets JSON: {}", json);
+        
         serde_json::from_str(&json)
             .map_err(|e| format!("Failed to parse presets: {}", e))?
     } else {
@@ -500,15 +667,20 @@ fn load_presets() -> Result<Vec<PresetData>, String> {
             .map_err(|e| format!("Failed to save presets: {}", e))?;
     }
     
+    println!("✅ Loaded {} presets", presets.len());
     Ok(presets)
 }
 
 #[tauri::command]
 fn load_preset(name: String, app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<PresetData, String> {
+    println!("🔍 Attempting to load preset: {}", name);
+    
     let presets = load_presets()?;
     let preset = presets.into_iter()
         .find(|p| p.name == name)
         .ok_or_else(|| format!("Preset '{}' not found", name))?;
+    
+    println!("📂 Found preset: {} | Win: {} | Goal: {}", preset.name, preset.win, preset.goal);
     
     // Update state
     let mut s = state.lock().unwrap();
@@ -524,7 +696,7 @@ fn load_preset(name: String, app: tauri::AppHandle, state: State<'_, SharedWinSt
     let _ = app.emit("state-updated", s.clone());
     let _ = broadcast_tx.send(s.clone());
     
-    println!("📂 Loaded preset: {}", name);
+    println!("✅ Loaded preset: {} | Updated Win: {} | Updated Goal: {}", name, s.win, s.goal);
     Ok(preset)
 }
 
@@ -895,7 +1067,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![greet, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds])
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();

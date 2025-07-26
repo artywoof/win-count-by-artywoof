@@ -3,6 +3,7 @@
   import audioManager from '$lib/audioManager';
   import { hotkeySettings, keybindToString, type Keybind } from '$lib/stores';
   import { registerHotkeysFromSettings, getHotkeyConflicts } from '$lib/hotkeyManager';
+  import autoUpdater from '$lib/autoUpdater';
 
   const dispatch = createEventDispatcher();
 
@@ -30,6 +31,9 @@
     startWithWindows: false,
     checkUpdatesOnStart: true
   };
+
+  // Auto Update state
+  let isCheckingUpdate = false;
 
   // Hotkey conflicts
   let hotkeyConflicts: string[] = [];
@@ -111,6 +115,31 @@
       localStorage.setItem('generalSettings', JSON.stringify(generalSettings));
     } catch (error) {
       console.error('Failed to save general settings:', error);
+    }
+  }
+
+  // Auto Update functions
+  async function checkForUpdates() {
+    if (isCheckingUpdate) return;
+    
+    isCheckingUpdate = true;
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      
+      if (result.hasUpdate && result.updateInfo) {
+        console.log('🔄 Update available:', result.updateInfo.version);
+        // Show notification or dispatch event to parent
+        dispatch('updateAvailable', result.updateInfo);
+      } else {
+        console.log('✅ No updates available');
+        // Show no update notification
+        dispatch('noUpdateAvailable');
+      }
+    } catch (error) {
+      console.error('❌ Failed to check for updates:', error);
+      dispatch('updateError', error);
+    } finally {
+      isCheckingUpdate = false;
     }
   }
 
@@ -607,7 +636,9 @@
           </div>
 
           <div class="general-actions">
-            <button class="action-btn">🔄 ตรวจสอบอัปเดต</button>
+            <button class="action-btn" on:click={() => dispatch('checkUpdate')} disabled={isCheckingUpdate}>
+              {isCheckingUpdate ? '🔄 กำลังตรวจสอบ...' : '🔄 ตรวจสอบอัปเดต'}
+            </button>
             <button class="action-btn">📁 เปิดโฟลเดอร์ข้อมูล</button>
             <button class="action-btn">📋 คัดลอกข้อมูลระบบ</button>
           </div>

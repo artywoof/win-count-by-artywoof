@@ -1,5 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri';
-import { appWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 
 export interface UpdateInfo {
   version: string;

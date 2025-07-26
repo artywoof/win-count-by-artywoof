@@ -4,6 +4,8 @@
   import { browser } from '$app/environment';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { invoke } from '@tauri-apps/api/core';
+  import autoUpdater from '$lib/autoUpdater';
+  import licenseManager from '$lib/licenseManager';
 
   // State stores - these will be updated by Tauri events
   const win = writable(0);
@@ -24,11 +26,13 @@
   // UI state
   let showSettingsModal = false;
   let showPresetModal = false;
+  let showCopyModal = false;
   let settingsTab = 'hotkey'; // 'hotkey' or 'sound'
   
   // Preset editing state
-  let editingPreset = null;
+  let editingPreset: string | null = null;
   let newPresetName = '';
+  let renameValue: string = '';
 
   // Settings state
   let customHotkeys: Record<string, string> = {
@@ -61,6 +65,205 @@
   let audioDown: HTMLAudioElement;
 
   let overlayWebSocket: WebSocket | null = null;
+
+  let showAddPreset = false;
+  let addPresetValue = '';
+  let addPresetInput: HTMLInputElement | null = null;
+
+  // ... state อื่นๆ ...
+  let showDeleteModal = false;
+  let presetToDelete: string | null = null;
+
+  // Auto Update state
+  let hasUpdate = false;
+  let updateInfo: any = null;
+  let isCheckingUpdate = false;
+  
+  // Upload message state
+  let uploadMessage = '';
+  
+  // License state
+  let showLicenseModal = false;
+  let isLicenseValid = false;
+  let licenseStatusMessage = '';
+  let licenseKeyInput = '';
+  let licenseError = '';
+  let licenseSuccess = '';
+  let isAppReady = false; // ควบคุมการแสดงแอพหลัก
+  
+  async function checkLicenseStatus() {
+    try {
+      // Wait for license manager to be ready
+      while (!licenseManager.isReady()) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      isLicenseValid = licenseManager.isLicenseValid();
+      licenseStatusMessage = licenseManager.getStatusMessage();
+      
+      console.log('🔑 License status:', licenseStatusMessage);
+      
+      if (isLicenseValid) {
+        isAppReady = true; // อนุญาตให้แสดงแอพหลัก
+      } else {
+        showLicenseModal = true; // แสดง Modal ให้กรอก License
+      }
+    } catch (error) {
+      console.error('❌ Failed to check license status:', error);
+      isLicenseValid = false;
+      licenseStatusMessage = 'เกิดข้อผิดพลาดในการตรวจสอบ License';
+      showLicenseModal = true; // แสดง Modal ให้กรอก License
+    }
+  }
+  
+  function openLicenseModal() {
+    console.log('🔑 openLicenseModal called, setting showLicenseModal = true');
+    showLicenseModal = true;
+  }
+  
+  function closeLicenseModal() {
+    // อนุญาตให้ปิด Modal เฉพาะเมื่อ License ถูกต้องแล้ว
+    if (isLicenseValid) {
+      showLicenseModal = false;
+      // Reset form
+      licenseKeyInput = '';
+      licenseError = '';
+      licenseSuccess = '';
+    }
+  }
+
+  async function validateLicenseKey() {
+    // Clear previous messages
+    licenseError = '';
+    licenseSuccess = '';
+
+    // Check if input is empty
+    if (!licenseKeyInput.trim()) {
+      licenseError = 'กรุณากรอก License Key';
+      return;
+    }
+
+    try {
+      // ตรวจสอบ License Key กับ backend
+      const isValid = await invoke('validate_license_key', { key: licenseKeyInput.trim() });
+      
+      if (isValid === true) {
+        licenseSuccess = 'License Key ถูกต้อง!';
+        isLicenseValid = true;
+        licenseStatusMessage = 'License ถูกต้อง - Win Count by ArtYWoof';
+        isAppReady = true; // อนุญาตให้แสดงแอพหลัก
+        
+        // Auto close modal after 2 seconds
+        setTimeout(() => {
+          closeLicenseModal();
+        }, 2000);
+      } else {
+        licenseError = 'License Key ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+        isLicenseValid = false;
+      }
+    } catch (error: any) {
+      console.error('❌ License validation error:', error);
+      if (error.toString().includes('already activated on another machine')) {
+        licenseError = 'License Key นี้ถูกใช้งานบนเครื่องอื่นแล้ว';
+      } else {
+        licenseError = 'เกิดข้อผิดพลาดในการตรวจสอบ License Key';
+      }
+      isLicenseValid = false;
+    }
+  }
+
+  function openAddPreset() {
+    showAddPreset = true;
+    addPresetValue = '';
+    setTimeout(() => { addPresetInput?.focus(); }, 10);
+  }
+  function cancelAddPreset() {
+    showAddPreset = false;
+    addPresetValue = '';
+  }
+  async function confirmAddPreset() {
+    const name = addPresetValue.trim();
+    if (!name || $presets.includes(name)) return;
+    
+    try {
+      console.log(`➕ Creating new preset: ${name}`);
+      
+      // สร้าง Preset ใหม่ด้วยค่าเริ่มต้น
+      const newPresetData: PresetData = {
+        name: name,
+        win: 0,
+        goal: 10,
+        show_goal: true,
+        show_crown: true,
+        hotkeys: {
+          increase: customHotkeys.increment,
+          decrease: customHotkeys.decrement,
+          step_size: 1
+        }
+      };
+
+      // บันทึก Preset ใหม่ไปยัง Backend
+      await invoke('save_preset', { preset: newPresetData });
+      console.log(`✅ Created new preset: ${name}`);
+
+      // โหลดรายการ preset ใหม่จาก backend
+      const presetList: any = await invoke('load_presets');
+      presets.set(presetList.map((p: any) => p.name));
+      
+      // ปิด Modal และรีเซ็ตค่า
+      showAddPreset = false;
+      addPresetValue = '';
+      
+      console.log(`✅ Successfully created preset: ${name}`);
+    } catch (err) {
+      console.error('❌ Failed to create preset:', err);
+      alert(`ไม่สามารถสร้าง Preset "${name}" ได้: ${err}`);
+    }
+  }
+
+  function requestDeletePreset(presetName: string) {
+    presetToDelete = presetName;
+    showDeleteModal = true;
+  }
+
+  async function confirmDeletePreset() {
+    if (!presetToDelete) return;
+    await deletePreset(presetToDelete);
+    showDeleteModal = false;
+    presetToDelete = null;
+  }
+
+  function cancelDeletePreset() {
+    showDeleteModal = false;
+    presetToDelete = null;
+  }
+
+  async function deletePreset(presetName: string) {
+    if (presetName === 'Default') {
+      alert('ไม่สามารถลบ Preset เริ่มต้นได้');
+      return;
+    }
+    try {
+      console.log(`🗑️ Attempting to delete preset: ${presetName}`);
+      await invoke('delete_preset', { name: presetName });
+      console.log(`✅ Backend confirmed deletion of: ${presetName}`);
+      // โหลดรายการ preset ใหม่จาก backend
+      const presetList: any = await invoke('load_presets');
+      presets.set(presetList.map((p: any) => p.name));
+      // ถ้าลบ preset ที่ใช้งานอยู่ ให้กลับไป Default
+      if ($currentPreset === presetName) {
+        console.log(`🔄 Switching to Default preset`);
+        currentPreset.set('Default');
+        await loadPreset('Default', false);
+      }
+      console.log(`✅ Successfully deleted preset: ${presetName}`);
+      // ไม่ปิด Modal - ให้ผู้ใช้ปิดเอง
+      return; // หยุดการทำงานที่นี่ ไม่ให้ปิด Modal
+    } catch (err) {
+      console.error('❌ Failed to delete preset:', err);
+      alert(`ไม่สามารถลบ Preset "${presetName}" ได้: ${err}`);
+    }
+  }
 
   // Initialize Tauri connection and load initial state
   async function initializeTauri() {
@@ -268,16 +471,84 @@
   }
 
   async function copyOverlayLink() {
-    const overlayUrl = 'http://localhost:5173/overlay';
+    const overlayUrl = 'http://localhost:777/overlay.html';
     if (navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(overlayUrl);
-        alert(`Overlay link copied to clipboard:\n${overlayUrl}`);
+        showCopyModal = true;
+        setTimeout(() => {
+          showCopyModal = false;
+        }, 2000); // ปิด Modal หลังจาก 2 วินาที
       } catch (err) {
-        alert(`Please copy this overlay link:\n${overlayUrl}`);
+        showCopyModal = true;
+        setTimeout(() => {
+          showCopyModal = false;
+        }, 2000);
       }
     } else {
-      alert(`Please copy this overlay link:\n${overlayUrl}`);
+      showCopyModal = true;
+      setTimeout(() => {
+        showCopyModal = false;
+      }, 2000);
+    }
+  }
+
+  // Auto Update functions
+  async function checkForUpdates() {
+    if (isCheckingUpdate) return;
+    
+    isCheckingUpdate = true;
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      hasUpdate = result.hasUpdate;
+      updateInfo = result.updateInfo;
+      
+      if (hasUpdate && updateInfo) {
+        console.log('🔄 Update available:', updateInfo.version);
+      } else {
+        console.log('✅ No updates available');
+      }
+    } catch (error) {
+      console.error('❌ Failed to check for updates:', error);
+    } finally {
+      isCheckingUpdate = false;
+    }
+  }
+
+  async function downloadUpdate() {
+    if (!updateInfo?.downloadUrl) return;
+    
+    try {
+      window.open(updateInfo.downloadUrl, '_blank');
+      console.log('📥 Opening download link:', updateInfo.downloadUrl);
+    } catch (error) {
+      console.error('❌ Failed to open download link:', error);
+    }
+  }
+
+  function dismissUpdate() {
+    hasUpdate = false;
+    updateInfo = null;
+  }
+
+  // Show notification function
+  function showNotification(message: string, duration: number = 3000) {
+    // Use existing copy modal for notifications
+    showCopyModal = true;
+    setTimeout(() => {
+      showCopyModal = false;
+    }, duration);
+  }
+
+  // Handle update check result
+  function handleUpdateCheck(result: any) {
+    if (result.hasUpdate && result.updateInfo) {
+      hasUpdate = true;
+      updateInfo = result.updateInfo;
+      console.log('🔄 Update available:', result.updateInfo.version);
+    } else {
+      console.log('✅ No updates available');
+      showNotification('✅ ไม่มีอัปเดตใหม่');
     }
   }
 
@@ -398,13 +669,13 @@
     editingGoal = true;
     goalEditValue = $goal.toString();
     setTimeout(() => {
-      if (winInputElement) {
-        winInputElement.focus();
-        // Place cursor at end without selecting all text
-        const length = winInputElement.value.length;
-        winInputElement.setSelectionRange(length, length);
+      if (goalInputElement) {
+        goalInputElement.focus();
+        // Place cursor at end
+        const length = goalInputElement.value.length;
+        goalInputElement.setSelectionRange(length, length);
       }
-    }, 10);
+    }, 0);
   }
 
   function saveWinEdit() {
@@ -731,83 +1002,69 @@
   // Preset management functions
   async function loadPresets() {
     try {
-      // Load from presets directory
-      const presetFiles = ['Default', 'REPO']; // For now, hardcoded list
-      presets.set(presetFiles);
+      console.log('📋 Loading presets from backend...');
+      // โหลดจาก Backend จริงๆ
+      const presetList: any = await invoke('load_presets');
+      const presetNames = presetList.map((p: any) => p.name);
+      presets.set(presetNames);
+      console.log('✅ Loaded presets from backend:', presetNames);
     } catch (err) {
       console.error('❌ Failed to load presets:', err);
+      // Fallback to default preset
       presets.set(['Default']);
     }
   }
 
-  async function loadPreset(presetName: string) {
+  async function savePresetByName(presetName: string) {
     try {
-      // Here you would normally load from file, for now use hardcoded data
-      let presetData;
-      if (presetName === 'REPO') {
-        presetData = { win: 0, goal: 50, showCrown: true, showGoal: true };
-      } else {
-        presetData = { win: 0, goal: 10, showCrown: true, showGoal: true };
-      }
+      console.log(`💾 Attempting to save preset: ${presetName}`);
+      console.log(`Current win/goal: ${$win}/${$goal}`);
+
+      // สร้าง PresetData จากสเตทปัจจุบัน
+      const presetData = {
+        name: presetName,
+        win: $win,
+        goal: $goal,
+        show_goal: $showGoal,
+        show_crown: $showCrown,
+        hotkeys: {
+          increase: customHotkeys.increment,
+          decrease: customHotkeys.decrement,
+          step_size: 1
+        }
+      };
+
+      // เรียก Backend เพื่อบันทึก Preset
+      await invoke('save_preset', { preset: presetData });
+      console.log(`✅ Saved preset: ${presetName}`);
+    } catch (err) {
+      console.error(`❌ Failed to save preset: ${presetName}`, err);
+    }
+  }
+
+  async function loadPreset(presetName: string, skipAutoSave: boolean = false) {
+    // ก่อนเปลี่ยน preset ให้ auto-save preset ปัจจุบันก่อน (ยกเว้นเมื่อ skipAutoSave = true)
+    if ($currentPreset && !skipAutoSave) {
+      await savePresetByName($currentPreset);
+    }
+    try {
+      // เรียก backend load_preset (ต้องส่ง { name: presetName })
+      const presetData: any = await invoke('load_preset', { name: presetName });
+      console.log('🔍 Loaded preset data:', presetData);
       
-      // Apply preset data
-      await tauriSetWin(presetData.win);
-      await tauriSetGoal(presetData.goal);
-      showCrown.set(presetData.showCrown);
-      showGoal.set(presetData.showGoal);
+      // Apply preset data (ปรับตามโครงสร้างจริง)
+      win.set(presetData.win);  // ลบ || 0 ออก
+      goal.set(presetData.goal);  // ลบ || 10 ออก
+      showCrown.set(presetData.show_crown !== false);
+      showGoal.set(presetData.show_goal !== false);
       currentPreset.set(presetName);
       
       console.log(`✅ Loaded preset: ${presetName}`);
     } catch (err) {
       console.error('❌ Failed to load preset:', err);
-    }
-  }
-
-  async function saveCurrentAsPreset() {
-    if (!newPresetName.trim()) return;
-    
-    try {
-      const presetData = {
-        presetName: newPresetName,
-        win: $win,
-        goal: $goal,
-        showCrown: $showCrown,
-        showGoal: $showGoal
-      };
-      
-      // Add to presets list if not already there
-      const currentPresets = $presets;
-      if (!currentPresets.includes(newPresetName)) {
-        presets.set([...currentPresets, newPresetName]);
-      }
-      
-      console.log(`✅ Saved preset: ${newPresetName}`);
-      newPresetName = '';
-      showPresetModal = false;
-      } catch (err) {
-      console.error('❌ Failed to save preset:', err);
-    }
-  }
-
-  async function deletePreset(presetName: string) {
-    if (presetName === 'Default') {
-      alert('ไม่สามารถลบ Preset เริ่มต้นได้');
-      return;
-    }
-    
-    if (confirm(`คุณต้องการลบ Preset "${presetName}" หรือไม่?`)) {
-      try {
-        const currentPresets = $presets.filter(p => p !== presetName);
-        presets.set(currentPresets);
-        
-        if ($currentPreset === presetName) {
-          await loadPreset('Default');
-        }
-        
-        console.log(`✅ Deleted preset: ${presetName}`);
-    } catch (err) {
-        console.error('❌ Failed to delete preset:', err);
-      }
+      // Fallback to default values if loading fails
+      win.set(0);
+      goal.set(10);
     }
   }
 
@@ -880,6 +1137,12 @@
     
     initOverlayWebSocket();
     
+    // Initialize Auto Update
+    await checkForUpdates();
+    
+    // Check license status
+    await checkLicenseStatus();
+    
     console.log('✅ App initialization complete');
   });
 
@@ -935,6 +1198,130 @@
           current_preset: $currentPreset
         });
   }
+
+  function startEditPreset(preset: string) {
+    editingPreset = preset;
+    renameValue = preset;
+    console.log(`✏️ Started editing preset: ${preset}`);
+  }
+
+  function cancelEditPreset() {
+    editingPreset = null;
+    renameValue = '';
+    console.log('❌ Cancelled editing preset');
+  }
+
+  async function confirmRenamePreset(oldName: string, newName: string) {
+    if (!newName.trim() || newName === oldName) {
+      cancelEditPreset();
+      return;
+    }
+
+    try {
+      console.log(`🔄 Renaming preset from "${oldName}" to "${newName}"`);
+      
+      // สร้าง Preset ใหม่ด้วยชื่อใหม่
+      const renamedPresetData: PresetData = {
+        name: newName,
+        win: $win,
+        goal: $goal,
+        show_goal: $showGoal,
+        show_crown: $showCrown,
+        hotkeys: {
+          increase: customHotkeys.increment,
+          decrease: customHotkeys.decrement,
+          step_size: 1
+        }
+      };
+
+      // บันทึก Preset ใหม่
+      await invoke('save_preset', { preset: renamedPresetData });
+      
+      // ลบ Preset เก่า (ถ้าไม่ใช่ Default)
+      if (oldName !== 'Default') {
+        await invoke('delete_preset', { name: oldName });
+      }
+      
+      // โหลดรายการ preset ใหม่
+      const presetList: any = await invoke('load_presets');
+      presets.set(presetList.map((p: any) => p.name));
+      
+      // อัปเดต currentPreset ถ้าเป็น preset ที่กำลังใช้งานอยู่
+      if ($currentPreset === oldName) {
+        currentPreset.set(newName);
+      }
+      
+      // ปิดการแก้ไข
+      editingPreset = null;
+      renameValue = '';
+      
+      console.log(`✅ Successfully renamed preset from "${oldName}" to "${newName}"`);
+    } catch (err) {
+      console.error('❌ Failed to rename preset:', err);
+      alert(`ไม่สามารถเปลี่ยนชื่อ Preset ได้: ${err}`);
+    }
+  }
+
+  // Type definition สำหรับ PresetData
+  type PresetData = {
+    name: string;
+    win: number;
+    goal: number;
+    show_goal: boolean;
+    show_crown: boolean;
+    hotkeys: {
+      increase: string;
+      decrease: string;
+      step_size: number;
+    };
+  };
+
+  // ลบฟังก์ชัน saveCurrentPreset เดิม
+  async function selectPreset(preset: string) {
+    try {
+      console.log(`🔄 Selecting preset: ${preset}`);
+      console.log(`Current preset: ${$currentPreset}, Current win/goal: ${$win}/${$goal}`);
+
+      // บันทึก Preset ปัจจุบันก่อน (ยกเว้น Default)
+      if ($currentPreset !== 'Default') {
+        const currentPresetData: PresetData = {
+          name: $currentPreset,
+          win: $win,
+          goal: $goal,
+          show_goal: $showGoal,
+          show_crown: $showCrown,
+          hotkeys: {
+            increase: customHotkeys.increment,
+            decrease: customHotkeys.decrement,
+            step_size: 1
+          }
+        };
+
+        await invoke('save_preset', { preset: currentPresetData });
+        console.log(`✅ Saved current preset: ${$currentPreset}`);
+      }
+
+      // โหลด Preset ใหม่
+      const loadedPreset: PresetData = await invoke('load_preset', { name: preset });
+      console.log('📂 Loaded preset data:', loadedPreset);
+
+      // อัปเดต Stores
+      win.set(loadedPreset.win);
+      goal.set(loadedPreset.goal);
+      showGoal.set(loadedPreset.show_goal);
+      showCrown.set(loadedPreset.show_crown);
+      currentPreset.set(preset);
+
+      // ปิด Modal
+      showPresetModal = false;
+
+      console.log(`✅ Successfully switched to preset: ${preset}`);
+    } catch (err) {
+      console.error('❌ Failed to select preset:', err);
+      alert(`ไม่สามารถเปลี่ยน Preset ได้: ${err}`);
+    }
+  }
+
 </script>
 
 <!-- Audio elements for sound effects -->
@@ -955,9 +1342,21 @@
   </div>
 
   <!-- Main Content -->
+  {#if isAppReady}
   <div class="main-content">
     <!-- App Title -->
-    <h1 class="app-title">PRESET</h1>
+    <div class="app-title-container">
+      <h1 class="app-title">{$currentPreset}</h1>
+      {#if hasUpdate}
+        <button 
+          class="auto-update-btn"
+          on:click={downloadUpdate}
+          title="อัปเดตใหม่พร้อมใช้งาน! คลิกเพื่อดาวน์โหลด"
+        >
+          AUTO
+        </button>
+      {/if}
+    </div>
     
     <!-- Win Counter Section -->
     <div class="counter-section">
@@ -1010,7 +1409,7 @@
     <!-- Goal Section -->
     <div class="goal-container">
       <span class="goal-label">GOAL:</span>
-      <div class="goal-number-box">
+      <div class="goal-number-box" on:click={() => { if (!editingGoal) { startEditGoal(); } }} tabindex="0">
         {#if editingGoal}
           <input
             bind:this={goalInputElement}
@@ -1018,31 +1417,17 @@
             on:keydown={handleGoalInputKeydown}
             on:input={handleGoalInputChange}
             on:blur={saveGoalEdit}
-            class="goal-value-input"
+            class="{inputSizeClass}"
             type="text"
             inputmode="numeric"
             maxlength="6"
             autocomplete="off"
             spellcheck="false"
-            aria-label="Edit goal count"
+            aria-label="Edit goal"
             placeholder=""
           />
         {:else}
-          <span 
-            class="goal-value" 
-            on:click={startEditGoal} 
-            on:keydown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                startEditGoal();
-              }
-            }}
-            role="button" 
-            tabindex="0"
-            aria-label="Goal count: {$goal}. Click to edit or press Enter"
-          >
-            {$goal}
-          </span>
+          <span>{goalEditValue || $goal}</span>
         {/if}
       </div>
     </div>
@@ -1050,7 +1435,7 @@
     <!-- Action Buttons -->
     <div class="action-section">
       <!-- Preset Button -->
-      <button class="preset-btn" on:click={() => showPresetModal = true}>
+      <button class="donate-btn" on:click={() => showPresetModal = true}>
         PRESET
       </button>
 
@@ -1105,264 +1490,281 @@
     <button class="action-btn secondary copy-btn" on:click={copyLink}>
       Copy Link
     </button>
+    
   </div>
 
-  <!-- Settings Modal -->
-  {#if showSettingsModal}
-    <div class="modal-backdrop" on:click={() => showSettingsModal = false} on:keydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="button" tabindex="0">
-      <div class="modal settings-modal" on:click|stopPropagation role="dialog" aria-labelledby="settings-title">
-        <div class="modal-header">
-          <h3 id="settings-title">⚙️ ตั้งค่า</h3>
-          <button class="modal-close" on:click={() => showSettingsModal = false}>×</button>
-        </div>
-        
-        <!-- Settings Tabs -->
-        <div class="settings-tabs">
-          <button 
-            class="settings-tab {settingsTab === 'hotkey' ? 'active' : ''}"
-            on:click={() => settingsTab = 'hotkey'}
-          >
-            ⌨️ ปุ่มลัด
-          </button>
-          <button 
-            class="settings-tab {settingsTab === 'sound' ? 'active' : ''}"
-            on:click={() => settingsTab = 'sound'}
-          >
-            🔊 เสียง
-          </button>
-        </div>
-
-        <div class="modal-body">
-          {#if settingsTab === 'hotkey'}
-            <!-- Hotkey Customization -->
-          <div class="settings-group">
-              <h4 class="settings-group-title">🎹 ปรับแต่งปุ่มลัด</h4>
-              <p class="settings-note">
-                คลิกที่ปุ่มลัดเพื่อเปลี่ยน (รองรับปุ่มใดๆ และการรวม 3 ปุ่ม)
-              </p>
-              
-              <div class="hotkey-customization">
-                <div class="hotkey-item">
-                  <span class="hotkey-label">เพิ่ม (+1):</span>
-                  <button 
-                    class="hotkey-input {recordingHotkey === 'increment' ? 'recording' : ''}"
-                    on:click={() => startHotkeyRecording('increment')}
-                  >
-                    {recordingHotkey === 'increment' ? 'กดปุ่ม...' : customHotkeys.increment}
-                  </button>
-              </div>
-                
-                <div class="hotkey-item">
-                  <span class="hotkey-label">ลด (-1):</span>
-                  <button 
-                    class="hotkey-input {recordingHotkey === 'decrement' ? 'recording' : ''}"
-                    on:click={() => startHotkeyRecording('decrement')}
-                  >
-                    {recordingHotkey === 'decrement' ? 'กดปุ่ม...' : customHotkeys.decrement}
-                  </button>
-              </div>
-                
-                <div class="hotkey-item">
-                  <span class="hotkey-label">เพิ่ม (+10):</span>
-                  <button 
-                    class="hotkey-input {recordingHotkey === 'increment10' ? 'recording' : ''}"
-                    on:click={() => startHotkeyRecording('increment10')}
-                  >
-                    {recordingHotkey === 'increment10' ? 'กดปุ่ม...' : customHotkeys.increment10}
-                  </button>
-              </div>
-                
-                <div class="hotkey-item">
-                  <span class="hotkey-label">ลด (-10):</span>
-                  <button 
-                    class="hotkey-input {recordingHotkey === 'decrement10' ? 'recording' : ''}"
-                    on:click={() => startHotkeyRecording('decrement10')}
-                  >
-                    {recordingHotkey === 'decrement10' ? 'กดปุ่ม...' : customHotkeys.decrement10}
-                  </button>
-              </div>
-          </div>
-
-              <div class="settings-actions">
-                <button class="settings-btn reset" on:click={() => {
-                  customHotkeys = {
-                    increment: 'Alt+=',
-                    decrement: 'Alt+-',
-                    increment10: 'Alt+Shift+=',
-                    decrement10: 'Alt+Shift+-'
-                  };
-                }}>
-                  🔄 รีเซ็ตเป็นค่าเริ่มต้น
-                </button>
-              </div>
+        <!-- Settings Modal -->
+      {#if showSettingsModal}
+        <div class="modal-backdrop" on:click={() => showSettingsModal = false} on:keydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="button" tabindex="0">
+          <div class="modal settings-modal" on:click|stopPropagation role="dialog" aria-labelledby="settings-title">
+            <div class="modal-header">
+              <h3 id="settings-title">⚙️ ตั้งค่า</h3>
+              <button class="modal-close" on:click={() => showSettingsModal = false}>×</button>
             </div>
-          {:else if settingsTab === 'sound'}
-            <!-- Sound Customization -->
-          <div class="settings-group">
-              <h4 class="settings-group-title">🔊 ปรับแต่งเสียง</h4>
-              
-              <!-- Sound Toggle -->
-              <div class="sound-toggle">
-                <span class="sound-toggle-label">เปิด/ปิดเสียง:</span>
-                <button 
-                  class="toggle-switch {soundEnabled ? 'active' : ''}"
-                  on:click={toggleSound}
-                  role="switch"
-                  aria-checked={soundEnabled}
-                >
-                  <div class="toggle-knob"></div>
-                </button>
-              </div>
-              
-              <!-- Custom Sound Upload -->
-              <div class="sound-upload-section">
-                <h5 class="sound-section-title">📁 อัพโหลดเสียงใหม่</h5>
-                
-                <div class="sound-upload-item">
-                  <span class="sound-upload-label">เสียงเพิ่ม:</span>
-                  <input 
-                    type="file" 
-                    accept="audio/mp3,audio/wav"
-                    on:change={(e) => handleSoundUpload(e, 'increase')}
-                    class="sound-file-input"
-                    id="increase-sound-input"
-                  />
-                  <label for="increase-sound-input" class="sound-upload-btn">
-                    📂 เลือกไฟล์
-                  </label>
-                  {#if customIncreaseSound}
-                    <button class="sound-test-btn" on:click={playCustomIncreaseSound}>
-                      🔊 ทดสอบ
-                    </button>
-                  {/if}
-                </div>
-                
-                <div class="sound-upload-item">
-                  <span class="sound-upload-label">เสียงลด:</span>
-                  <input 
-                    type="file" 
-                    accept="audio/mp3,audio/wav"
-                    on:change={(e) => handleSoundUpload(e, 'decrease')}
-                    class="sound-file-input"
-                    id="decrease-sound-input"
-                  />
-                  <label for="decrease-sound-input" class="sound-upload-btn">
-                    📂 เลือกไฟล์
-                  </label>
-                  {#if customDecreaseSound}
-                    <button class="sound-test-btn" on:click={playCustomDecreaseSound}>
-                      🔊 ทดสอบ
-                    </button>
-                  {/if}
-                </div>
-              </div>
-              
-              <!-- Test Default Sounds -->
-              <div class="sound-test-section">
-                <h5 class="sound-section-title">🔊 ทดสอบเสียงเริ่มต้น</h5>
-                <div class="sound-test-controls">
-              <button on:click={playIncreaseSound} class="sound-btn test">
-                🔊 ทดสอบเสียงเพิ่ม
+            
+            <!-- Settings Tabs -->
+            <div class="settings-tabs">
+              <button 
+                class="settings-tab {settingsTab === 'hotkey' ? 'active' : ''}"
+                on:click={() => settingsTab = 'hotkey'}
+              >
+                ⌨️ ปุ่มลัด
               </button>
-              <button on:click={playDecreaseSound} class="sound-btn test">
-                🔊 ทดสอบเสียงลด
+              <button 
+                class="settings-tab {settingsTab === 'sound' ? 'active' : ''}"
+                on:click={() => settingsTab = 'sound'}
+              >
+                🔊 เสียง
               </button>
             </div>
-          </div>
-              
-              <!-- Reset Sound Settings -->
-              <div class="settings-actions">
-                <button class="settings-btn reset" on:click={resetSoundDefaults}>
-                  🔄 รีเซ็ตเป็นค่าเริ่มต้น
-                </button>
-              </div>
-            </div>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
 
-  <!-- Preset Modal -->
+            <div class="modal-body">
+              {#if settingsTab === 'hotkey'}
+                <!-- Hotkey Customization -->
+              <div class="settings-group">
+                  <h4 class="settings-group-title">🎹 ปรับแต่งปุ่มลัด</h4>
+                  <p class="settings-note">
+                    คลิกที่ปุ่มลัดเพื่อเปลี่ยน (รองรับปุ่มใดๆ และการรวม 3 ปุ่ม)
+                  </p>
+                  
+                  <div class="hotkey-customization">
+                    <div class="hotkey-item">
+                      <span class="hotkey-label">เพิ่ม (+1):</span>
+                      <button 
+                        class="hotkey-input {recordingHotkey === 'increment' ? 'recording' : ''}"
+                        on:click={() => startHotkeyRecording('increment')}
+                      >
+                        {recordingHotkey === 'increment' ? 'กดปุ่ม...' : customHotkeys.increment}
+                      </button>
+                  </div>
+                    
+                    <div class="hotkey-item">
+                      <span class="hotkey-label">ลด (-1):</span>
+                      <button 
+                        class="hotkey-input {recordingHotkey === 'decrement' ? 'recording' : ''}"
+                        on:click={() => startHotkeyRecording('decrement')}
+                      >
+                        {recordingHotkey === 'decrement' ? 'กดปุ่ม...' : customHotkeys.decrement}
+                      </button>
+                  </div>
+                    
+                    <div class="hotkey-item">
+                      <span class="hotkey-label">เพิ่ม (+10):</span>
+                      <button 
+                        class="hotkey-input {recordingHotkey === 'increment10' ? 'recording' : ''}"
+                        on:click={() => startHotkeyRecording('increment10')}
+                      >
+                        {recordingHotkey === 'increment10' ? 'กดปุ่ม...' : customHotkeys.increment10}
+                      </button>
+                  </div>
+                    
+                    <div class="hotkey-item">
+                      <span class="hotkey-label">ลด (-10):</span>
+                      <button 
+                        class="hotkey-input {recordingHotkey === 'decrement10' ? 'recording' : ''}"
+                        on:click={() => startHotkeyRecording('decrement10')}
+                      >
+                        {recordingHotkey === 'decrement10' ? 'กดปุ่ม...' : customHotkeys.decrement10}
+                      </button>
+                  </div>
+              </div>
+
+                  <div class="settings-actions">
+                    <button class="settings-btn reset" on:click={() => {
+                      customHotkeys = {
+                        increment: 'Alt+=',
+                        decrement: 'Alt+-',
+                        increment10: 'Alt+Shift+=',
+                        decrement10: 'Alt+Shift+-'
+                      };
+                    }}>
+                      🔄 รีเซ็ตเป็นค่าเริ่มต้น
+                    </button>
+                    <button class="settings-btn update" on:click={checkForUpdates} disabled={isCheckingUpdate}>
+                      {isCheckingUpdate ? '🔄 กำลังตรวจสอบ...' : '🔄 ตรวจสอบอัปเดต'}
+                    </button>
+                  </div>
+                </div>
+              {:else if settingsTab === 'sound'}
+                <!-- Sound Customization -->
+              <div class="settings-group">
+                  <h4 class="settings-group-title">🔊 ปรับแต่งเสียง</h4>
+                  
+                  <!-- Sound Toggle -->
+                  <div class="sound-toggle">
+                    <span class="sound-toggle-label">เปิด/ปิดเสียง:</span>
+                    <button 
+                      class="toggle-switch {soundEnabled ? 'active' : ''}"
+                      on:click={toggleSound}
+                      role="switch"
+                      aria-checked={soundEnabled}
+                    >
+                      <div class="toggle-knob"></div>
+                    </button>
+                  </div>
+                  
+                  <!-- Custom Sound Upload -->
+                  <div class="sound-upload-section">
+                    <h5 class="sound-section-title">📁 อัพโหลดเสียงใหม่</h5>
+                    
+                    <div class="sound-upload-item">
+                      <span class="sound-upload-label">เสียงเพิ่ม:</span>
+                      <input 
+                        type="file" 
+                        accept="audio/mp3,audio/wav"
+                        on:change={(e) => handleSoundUpload(e, 'increase')}
+                        class="sound-file-input"
+                        id="increase-sound-input"
+                      />
+                      <label for="increase-sound-input" class="sound-upload-btn">
+                        📂 เลือกไฟล์
+                      </label>
+                      {#if customIncreaseSound}
+                        <button class="sound-btn test" on:click={playCustomIncreaseSound}>▶️ ทดสอบ</button>
+                        <button class="sound-btn delete" on:click={() => {
+                          customIncreaseSound = null;
+                          audioUpCustom = null;
+                          uploadMessage = 'ลบเสียง increase แล้ว! ✅';
+                        }} title="ลบเสียงกำหนดเอง">🗑️ ลบ</button>
+                      {/if}
+                    </div>
+                    
+                    <div class="sound-upload-item">
+                      <span class="sound-upload-label">เสียงลด:</span>
+                      <input 
+                        type="file" 
+                        accept="audio/mp3,audio/wav"
+                        on:change={(e) => handleSoundUpload(e, 'decrease')}
+                        class="sound-file-input"
+                        id="decrease-sound-input"
+                      />
+                      <label for="decrease-sound-input" class="sound-upload-btn">
+                        📂 เลือกไฟล์
+                      </label>
+                      {#if customDecreaseSound}
+                        <button class="sound-btn test" on:click={playCustomDecreaseSound}>▶️ ทดสอบ</button>
+                        <button class="sound-btn delete" on:click={() => {
+                          customDecreaseSound = null;
+                          audioDownCustom = null;
+                          uploadMessage = 'ลบเสียง decrease แล้ว! ✅';
+                        }} title="ลบเสียงกำหนดเอง">🗑️ ลบ</button>
+                      {/if}
+                    </div>
+                  </div>
+                  
+                  <!-- Sound Test Controls -->
+                  <div class="sound-test-section">
+                    <h5 class="sound-section-title">🎵 ทดสอบเสียง</h5>
+                    <div class="sound-test-controls">
+                      <button class="sound-btn test" on:click={playCustomIncreaseSound || (() => audioUp?.play())}>🔊 เพิ่ม</button>
+                      <button class="sound-btn test" on:click={playCustomDecreaseSound || (() => audioDown?.play())}>🔊 ลด</button>
+                    </div>
+                  </div>
+                  
+                  <!-- Upload Message -->
+                  {#if uploadMessage}
+                    <div class="upload-message">{uploadMessage}</div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+              <button class="primary-btn" on:click={() => showSettingsModal = false}>✅ ตกลง</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+  <!-- Modal PRESET -->
   {#if showPresetModal}
     <div class="modal-backdrop" on:click={() => showPresetModal = false} on:keydown={(e) => e.key === 'Escape' && (showPresetModal = false)} role="button" tabindex="0">
-      <div class="modal preset-modal" on:click|stopPropagation role="dialog" aria-labelledby="preset-title">
+      <div class="modal settings-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
-          <h3 id="preset-title">📁 จัดการ PRESET</h3>
           <button class="modal-close" on:click={() => showPresetModal = false}>×</button>
         </div>
         <div class="modal-body">
-          <!-- Current Preset -->
-          <div class="settings-group">
-            <h4 class="settings-group-title">Preset ปัจจุบัน: {$currentPreset}</h4>
-          </div>
-
-          <!-- Preset List -->
-          <div class="settings-group">
-            <h4 class="settings-group-title">📋 รายการ Preset</h4>
-            <div class="preset-list">
-              {#each $presets as preset}
-                <div class="preset-item">
-                  <div class="preset-info">
-                    <span class="preset-name">{preset}</span>
-                    {#if preset === $currentPreset}
-                      <span class="preset-current">กำลังใช้</span>
+          <div class="preset-list">
+            {#each $presets as preset}
+              <div class="preset-item-btn {preset === $currentPreset ? 'active' : ''}" on:click={() => selectPreset(preset)}>
+                <span class="preset-name">{preset}</span>
+                <div class="preset-inline-actions">
+                  {#if preset === 'Default'}
+                    <button class="preset-btn edit" on:click|stopPropagation={() => startEditPreset(preset)} title="เปลี่ยนชื่อ">เปลี่ยนชื่อ</button>
+                  {:else if preset !== 'Default'}
+                    {#if editingPreset === preset}
+                      <input class="rename-input" bind:value={renameValue} on:keydown|stopPropagation={(e) => e.key === 'Enter' && confirmRenamePreset(preset, renameValue)} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation />
+                      <button class="preset-btn cancel" on:click|stopPropagation={cancelEditPreset} title="ยกเลิก">ยกเลิก</button>
+                    {:else}
+                      <button class="preset-btn edit" on:click|stopPropagation={() => startEditPreset(preset)} title="เปลี่ยนชื่อ">เปลี่ยนชื่อ</button>
+                      <button class="preset-btn delete" on:click|stopPropagation={() => {
+                        console.log(`🔴 Delete button clicked for preset: ${preset}`);
+                        requestDeletePreset(preset);
+                      }} title="ลบ">ลบ</button>
                     {/if}
-                  </div>
-                  <div class="preset-actions">
-                    <button 
-                      on:click={() => loadPreset(preset)} 
-                      class="preset-btn load"
-                      disabled={preset === $currentPreset}
-                    >
-                      📂 โหลด
-                    </button>
-                    <button 
-                      on:click={() => editingPreset = preset} 
-                      class="preset-btn edit"
-                    >
-                      ✏️ แก้ไข
-                    </button>
-                    <button 
-                      on:click={() => deletePreset(preset)} 
-                      class="preset-btn delete"
-                      disabled={preset === 'Default'}
-                    >
-                      🗑️ ลบ
-                    </button>
-                  </div>
+                  {/if}
                 </div>
-              {/each}
-            </div>
-          </div>
-
-          <!-- Create New Preset -->
-          <div class="settings-group">
-            <h4 class="settings-group-title">➕ สร้าง Preset ใหม่</h4>
-            <div class="create-preset">
-              <input 
-                type="text" 
-                bind:value={newPresetName} 
-                placeholder="ชื่อ Preset ใหม่" 
-                class="preset-name-input"
-              />
-              <button 
-                on:click={saveCurrentAsPreset} 
-                class="preset-btn create"
-                disabled={!newPresetName.trim()}
-              >
-                💾 บันทึก
-              </button>
-            </div>
-            <p class="settings-note">
-              จะบันทึกค่าปัจจุบัน: Win = {$win}, Goal = {$goal}, มงกุฎ = {$showCrown ? 'เปิด' : 'ปิด'}, เป้าหมาย = {$showGoal ? 'เปิด' : 'ปิด'}
-            </p>
+              </div>
+            {/each}
+            <!-- ปุ่มเพิ่ม Preset อยู่ล่างสุดเสมอ -->
+            {#if showAddPreset}
+              <div class="preset-item-btn add-preset-row">
+                <input class="add-preset-input" bind:this={addPresetInput} bind:value={addPresetValue} on:keydown|stopPropagation={(e) => e.key === 'Enter' && confirmAddPreset()} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation placeholder="ตั้งชื่อ Preset" />
+                <button class="preset-btn cancel" on:click|stopPropagation={cancelAddPreset}>ยกเลิก</button>
+              </div>
+            {:else}
+              <button class="preset-item-btn add" on:click|stopPropagation={openAddPreset}>+</button>
+            {/if}
           </div>
         </div>
       </div>
     </div>
   {/if}
+
+  <!-- Copy Success Modal -->
+  {#if showCopyModal}
+    <div class="modal-backdrop" on:click={() => showCopyModal = false} on:keydown={(e) => e.key === 'Escape' && (showCopyModal = false)} role="button" tabindex="0">
+      <div class="modal copy-modal" on:click|stopPropagation role="dialog">
+        <div class="modal-body">
+          <div class="copy-success">
+                          <div class="copy-icon">{hasUpdate ? '🔄' : '📋'}</div>
+            <h3>{hasUpdate ? '🔄 อัปเดตใหม่!' : 'คัดลอกแล้ว!'}</h3>
+            <p>{hasUpdate ? 'อัปเดตใหม่พร้อมใช้งาน' : 'ลิงก์ Overlay ถูกคัดลอกไปยัง Clipboard แล้ว'}</p>
+            <p class="copy-url">{hasUpdate ? updateInfo?.version || 'เวอร์ชันใหม่' : 'http://localhost:777/overlay.html'}</p>
+            {#if hasUpdate}
+              <div class="update-notice">
+                <p>🔄 อัปเดตใหม่พร้อมใช้งาน!</p>
+                <button class="update-btn" on:click={downloadUpdate}>📥 ดาวน์โหลด</button>
+              </div>
+            {/if}
           </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Delete Confirmation Modal -->
+  {#if showDeleteModal}
+    <div class="modal-backdrop" on:click={() => showDeleteModal = false} on:keydown={(e) => e.key === 'Escape' && (showDeleteModal = false)} role="button" tabindex="0">
+      <div class="modal delete-modal" on:click|stopPropagation role="dialog">
+        <div class="modal-header">
+          <h3>ยืนยันการลบ Preset</h3>
+          <button class="modal-close" on:click={() => showDeleteModal = false}>×</button>
+        </div>
+        <div class="modal-body">
+          <p>คุณแน่ใจหรือไม่ว่าต้องการลบ Preset "{presetToDelete}"?</p>
+          <div class="modal-actions">
+            <button class="action-btn confirm" on:click={confirmDeletePreset}>ยืนยัน</button>
+            <button class="action-btn cancel" on:click={cancelDeletePreset}>ยกเลิก</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+  {/if}
+
+</div>
 
 <style>
   .control-app {
@@ -1411,6 +1813,15 @@
     box-sizing: border-box;
     transform: translateX(-3px);
   }
+  .app-title-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    flex-shrink: 0;
+  }
+
   .app-title {
     font-size: calc(476px * 0.14); /* 14% of main-content width = ~67px */
     font-family: 'MiSansThai', sans-serif;
@@ -1420,8 +1831,44 @@
     margin: 0;
     letter-spacing: 0.02em;
     flex-shrink: 0;
-    width: 100%;
     line-height: 1.1;
+  }
+
+  .auto-update-btn {
+    background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+    animation: pulse-glow 2s ease-in-out infinite;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+
+  .auto-update-btn:hover {
+    background: linear-gradient(45deg, #ff5252, #ff7676);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+  }
+
+  .auto-update-btn:active {
+    transform: translateY(0);
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+    }
+    50% {
+      box-shadow: 0 2px 12px rgba(255, 107, 107, 0.6);
+    }
   }
   .counter-section {
     margin: calc(476px * 0.01) 0 0 0; /* ลด margin-top */
@@ -1456,29 +1903,38 @@
     transform: translateX(-10px); /* เลื่อนไปทางซ้าย 10px (-18px + 8px) */
   }
   .win-number-container {
-    display: flex; align-items: center; justify-content: center;
-    width: calc(476px * 0.35); /* 35% = ~167px */
-    height: calc(776px * 0.16 - 12px); /* ลดลง 12px */
-    background: transparent; 
-    border-radius: calc(476px * 0.042); /* ~20px */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(476px * 0.35);
+    height: calc(776px * 0.16 - 12px);
+    background: transparent;
+    border-radius: calc(476px * 0.042);
     border: 3px solid #00e5ff;
     overflow: hidden;
     padding: 0 6px;
     flex-shrink: 0;
+    cursor: pointer;
+    transition: border 0.2s, background 0.2s;
+  }
+  .win-number-container:hover {
+    border-color: #00e5ff;
+    background: rgba(0,229,255,0.08);
   }
   .win-number {
     font-size: 100px;
     font-family: 'MiSansThai-Bold', sans-serif;
-    font-weight: 700; 
-    color: #00e5ff; 
+    font-weight: 700;
+    color: #00e5ff;
     text-align: center;
     width: 100%;
     line-height: 1.1;
-    transition: font-size 0.2s;
+    transition: font-size 0.2s, color 0.2s, background 0.2s;
     letter-spacing: 0.5px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: pointer;
   }
   .win-size-2 { font-size: 100px; }
   .win-size-3 { font-size: 68px; }
@@ -1512,17 +1968,17 @@
     flex-shrink: 0; /* ไม่ให้หด */
   }
   .goal-number-box {
-    background: transparent; 
-    border-radius: calc(476px * 0.015); /* ~7px ความโค้งเล็กน้อย */
-    padding: calc(476px * 0.01) calc(476px * 0.042); /* ~5px ~20px ลดความสูง */
-    font-size: calc(476px * 0.063); /* ~30px */
+    background: transparent;
+    border-radius: calc(476px * 0.015);
+    padding: calc(476px * 0.01) calc(476px * 0.042);
+    font-size: calc(476px * 0.063);
     font-family: 'MiSansThai-Semibold', sans-serif;
-    color: #00e5ff; 
+    color: #00e5ff;
     font-weight: 600;
-    flex: 1; /* ขยายเต็มพื้ที่ที่เหลือ */
+    flex: 1;
     text-align: center;
     border: 2px solid #00e5ff;
-    margin-right: 12px; /* เพิ่มอีก 6px รวม 12px */
+    margin-right: 12px;
   }
   .action-section {
     width: 100%; 
@@ -1921,6 +2377,29 @@
     transform: translateY(-1px);
   }
 
+  .settings-btn.update {
+    background: transparent;
+    border: 2px solid #00e5ff;
+    border-radius: 8px;
+    color: #00e5ff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-left: 10px;
+  }
+
+  .settings-btn.update:hover {
+    background: rgba(0, 229, 255, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .settings-btn.update:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   /* Modal Styles */
   .modal-backdrop {
     position: absolute;
@@ -1998,245 +2477,734 @@
     max-height: 60vh;
   }
 
-  /* Preset Modal Specific */
-  .preset-modal {
-    max-width: 600px;
-  }
-
-  .preset-list {
+  /* Preset Modal Styles - ใช้โครงสร้างเหมือน Settings Modal */
+  .preset-current-display {
     display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-
-  .preset-item {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 12px;
+    gap: 12px;
+    padding: 12px 16px;
     background: rgba(0, 229, 255, 0.05);
-    border: 1px solid rgba(0, 229, 255, 0.2);
+    border: 1px solid rgba(0, 229, 255, 0.12);
     border-radius: 8px;
+    margin-bottom: 8px;
   }
-
-  .preset-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .preset-name {
+  .current-preset-name {
     font-size: 16px;
     font-weight: 600;
-    color: #ffffff;
+    color: #00e5ff;
   }
-
-  .preset-current {
+  .current-preset-badge {
     font-size: 12px;
     color: #00e5ff;
     background: rgba(0, 229, 255, 0.1);
     padding: 4px 8px;
     border-radius: 4px;
   }
-
+  .preset-list {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .preset-item-wrapper {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    align-items: stretch;
+    margin: 0 0 12px 0;
+    padding: 0;
+    gap: 0;
+  }
+  .preset-item-btn,
+  .preset-item-btn.add,
+  .add-preset-row {
+    border-radius: 18px;
+  }
+  .preset-item-btn {
+    padding: 8px 28px;
+    /* ...คง style เดิม... */
+  }
+  .preset-item-btn.add {
+    padding: 2px 28px;
+    font-size: 38px;
+    font-weight: 700;
+    /* ...คง style เดิม... */
+  }
+  .add-preset-row {
+    padding: 2px 28px;
+    min-height: unset;
+  }
+  .preset-item-btn:hover,
+  .preset-item-btn.active {
+    background: linear-gradient(90deg, #00e5ff 0%, #0a2540 100%);
+    color: #181a23;
+    border: 2.5px solid #00e5ff;
+    border-right: none;
+    box-shadow: 0 4px 18px 0 rgba(0,229,255,0.18);
+    z-index: 2;
+  }
   .preset-actions {
     display: flex;
-    gap: 8px;
+    flex-direction: row;
+    gap: 0;
+    align-items: stretch;
+    flex-shrink: 0;
+    height: 100%;
+  }
+  .preset-btn.delete {
+    min-width: unset;
+    width: auto;
+    padding: 0 8px;
+    font-size: 14px;
+    border-radius: 6px;
+    margin-right: 2px;
+    height: 32px;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preset-btn.delete:last-child {
+    margin-right: 0;
+  }
+  .preset-btn.edit {
+    border-radius: 0 18px 18px 0;
+    min-width: 64px;
+    padding: 0 14px;
+    font-size: 15px;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    font-weight: 600;
+    border-left: 1.5px solid #00e5ff;
+    border-top: 2.5px solid #00e5ff;
+    border-bottom: 2.5px solid #00e5ff;
+    border-right: 2.5px solid #00e5ff;
+    background: #10101a;
+    color: #00e5ff;
+    transition: background 0.2s, color 0.2s;
+    cursor: pointer;
+    height: 100%;
+  }
+  .preset-btn.edit:hover {
+    background: rgba(0,229,255,0.08);
+  }
+  .preset-name {
+    font-size: inherit;
+    font-family: inherit;
+    font-weight: inherit;
+    color: inherit;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    user-select: none;
+    transition: none;
+  }
+  .preset-btn.delete {
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+    border-width: 1px;
+  }
+  .preset-btn.delete:hover {
+    background: rgba(255, 107, 107, 0.1);
+  }
+  .preset-btn.edit {
+    color: #00e5ff;
+    border: 1.5px solid #00e5ff;
+    background: transparent;
+  }
+  .preset-btn.edit:hover {
+    background: rgba(0,229,255,0.08);
+  }
+  .preset-btn.small {
+    min-width: 36px;
+    width: 36px;
+    padding: 6px 0;
+    font-size: 18px;
+    border-radius: 6px;
+    margin-left: 2px;
+  }
+  .preset-btn.delete.small {
+    color: #ff6b6b;
+    border: 1px solid #ff6b6b;
+  }
+  .preset-btn.edit.small {
+    color: #00e5ff;
+    border: 1.5px solid #00e5ff;
+    background: transparent;
+  }
+  .preset-btn.edit.small:hover {
+    background: rgba(0,229,255,0.08);
   }
 
-  .preset-btn.load,
-  .preset-btn.edit,
-  .preset-btn.delete,
-  .preset-btn.create {
-    background: transparent;
-    border: 1px solid #00e5ff;
-    border-radius: 4px;
+  /* CSS: ปรับปุ่ม preset-item-btn ให้ดู clickable, active, และ Default เป็นปุ่มยาวเหมือนกัน */
+  .preset-item-btn {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    background: rgba(0, 229, 255, 0.05);
+    border: 2px solid rgba(0, 229, 255, 0.18);
+    border-radius: 8px;
+    padding: 14px 28px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: box-shadow 0.2s, background 0.2s, border 0.2s;
+    outline: none;
+    box-shadow: 0 1px 4px 0 rgba(0,229,255,0.04);
+    position: relative;
+  }
+  .preset-item-btn:hover {
+    background: rgba(0, 229, 255, 0.15);
+    border-color: #00e5ff;
+    box-shadow: 0 4px 20px 0 rgba(0,229,255,0.2);
+    transform: translateY(-1px);
+  }
+  .preset-item-btn:hover .preset-name {
+    text-shadow: 0 0 8px rgba(0, 229, 255, 0.8);
+    font-weight: 700;
     color: #00e5ff;
+  }
+  .preset-item-btn.active {
+    background: linear-gradient(135deg, #00e5ff 0%, #00b8cc 100%);
+    border-color: #00e5ff;
+    box-shadow: 0 4px 20px 0 rgba(0,229,255,0.3);
+    transform: translateY(-1px);
+  }
+  .preset-item-btn.active .preset-name {
+    color: #000;
+    font-weight: 700;
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
+  }
+  .preset-name {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: inherit;
+  }
+
+  /* RESET WIN NUMBER INPUT STYLE ให้เหมือนเดิม 100% */
+  .win-number-input {
+    width: 100%;
+    font-size: 100px;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    font-weight: 700;
+    color: #00e5ff;
+    background: transparent;
+    border: none;
+    outline: none;
+    text-align: center;
+    line-height: 1.1;
+    letter-spacing: 0.5px;
+    padding: 0;
+    margin: 0;
+    transition: font-size 0.2s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @media (max-width: 500px) {
+    .win-number-input.win-size-2 { font-size: 100px; }
+    .win-number-input.win-size-3 { font-size: 68px; }
+    .win-number-input.win-size-4 { font-size: 55px; }
+    .win-number-input.win-size-5 { font-size: 45px; }
+    .win-number-input.win-size-6 { font-size: 38px; }
+  }
+  /* END RESET */
+
+  /* RESET GOAL NUMBER INPUT STYLE ให้เหมือนเดิม 100% */
+  .goal-number-box input {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    max-width: 100%;
+    font-size: calc(476px * 0.063) !important;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    font-weight: 700;
+    color: #00e5ff;
+    background: transparent;
+    border: none;
+    outline: none;
+    text-align: center;
+    line-height: 1.1;
+    letter-spacing: 0.5px;
+    padding: 0;
+    margin: 0;
+    transition: border 0.2s, background 0.2s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-sizing: border-box;
+  }
+  .goal-number-box input.win-size-2,
+  .goal-number-box input.win-size-3,
+  .goal-number-box input.win-size-4,
+  .goal-number-box input.win-size-5,
+  .goal-number-box input.win-size-6 {
+    font-size: calc(476px * 0.063) !important;
+  }
+  .goal-number-box {
+    cursor: pointer;
+    transition: border 0.2s, background 0.2s;
+  }
+  .goal-number-box:hover {
+    border-color: #00e5ff;
+    background: rgba(0,229,255,0.08);
+  }
+  .goal-number-box input:focus {
+    outline: none;
+    border: none;
+    background: transparent;
+  }
+  @media (max-width: 500px) {
+    .goal-number-box input.win-size-2 { font-size: 100px; }
+    .goal-number-box input.win-size-3 { font-size: 68px; }
+    .goal-number-box input.win-size-4 { font-size: 55px; }
+    .goal-number-box input.win-size-5 { font-size: 45px; }
+    .goal-number-box input.win-size-6 { font-size: 38px; }
+  }
+  /* END RESET */
+
+  .rename-input {
+    width: 120px;
+    font-size: 18px;
+    border-radius: 6px;
+    padding: 2px 6px;
+    margin-right: -80px;
+    margin-top: -14px; 
+    height: 42px;
+  }
+  .rename-input:focus {
+    border-color: #00e5ff;
+    background: #ffffff;
+  }
+
+  .preset-btn.cancel {
+    color: #ff6b6b;
+    border: 1.5px solid #ff6b6b;
+    background: #10101a;
+    border-radius: 8px;
+    padding: 0 10px;
+    font-size: 15px;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    height: 100%;
+    transition: background 0.2s, color 0.2s;
+  }
+  .preset-btn.cancel:hover {
+    background: rgba(255,107,107,0.08);
+  }
+
+  .preset-btn.edit,
+  .preset-btn.cancel,
+  .preset-btn.delete {
+    min-width: unset;
+    width: auto;
+    padding: 4px 8px;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 6px;
+    margin-right: -175px;
+    margin-left: 80px;
+    height: 32px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+  }
+  .preset-btn.edit:last-child,
+  .preset-btn.cancel:last-child,
+  .preset-btn.delete:last-child {
+    margin-right: 0;
+  }
+
+  .preset-btn.add {
+    color: #00e5ff;
+    border: 1.5px solid #00e5ff;
+    background: #10101a;
+    border-radius: 6px;
+    padding: 0 12px;
+    font-size: 15px;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    height: 32px;
+    margin-bottom: 10px;
+    margin-right: 0;
+    transition: background 0.2s, color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preset-btn.add:hover {
+    background: rgba(0,229,255,0.08);
+  }
+  .preset-add-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 6px;
+  }
+  .add-preset-input {
+    width: 120px;
+    font-size: 15px;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    color: #00e5ff;
+    background: #181a23;
+    border: 1.5px solid #00e5ff;
+    border-radius: 6px;
+    padding: 2px 8px;
+    outline: none;
+    transition: border 0.2s;
+  }
+  .add-preset-input:focus {
+    border-color: #00e5ff;
+    background: #10101a;
+  }
+
+  .preset-item-btn.add {
+    justify-content: center;
+    font-size: 28px;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    font-weight: 700;
+    color: #00e5ff;
+    background: rgba(0, 229, 255, 0.08);
+    border: 2.5px solid #00e5ff;
+    border-radius: 18px;
+    padding: 14px 28px;
+    margin-bottom: 16px;
+    width: 100%;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    transition: background 0.2s, border 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 12px 0 rgba(0,229,255,0.08);
+    outline: none;
+    cursor: pointer;
+  }
+  .preset-item-btn.add:hover {
+    background: linear-gradient(90deg, #00e5ff 0%, #0a2540 100%);
+    color: #181a23;
+    border: 2.5px solid #00e5ff;
+    box-shadow: 0 4px 18px 0 rgba(0,229,255,0.18);
+    z-index: 2;
+  }
+  .add-preset-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 2px 28px;
+    background: rgba(0, 229, 255, 0.08);
+    border: 2.5px solid #00e5ff;
+    border-radius: 18px;
+    margin-bottom: 16px;
+    min-height: unset;
+  }
+  .preset-item-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 28px;
+    background: rgba(0, 229, 255, 0.08);
+    border: 2.5px solid #00e5ff;
+    border-radius: 18px;
+    margin-bottom: 16px;
+    cursor: pointer;
+    transition: background 0.2s, border 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 12px 0 rgba(0,229,255,0.08);
+    outline: none;
+    min-height: unset;
+  }
+  .preset-inline-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 100px;
+    margin-left: auto;
+    margin-right: -16px;
+    flex-shrink: 0;
+    height: 100%;
+    align-self: center;
+    transform: translateY(6px);
+  }
+  .preset-name {
+    flex: 1 1 0%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+  }
+
+  .preset-item-btn.add {
+    padding: 2px 28px;
+    font-size: 38px;
+    font-weight: 700;
+    /* ...คง style เดิม... */
+  }
+
+  .modal-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 24px;
+  }
+  .action-btn.confirm {
+    background: #ff3b3b;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 24px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .action-btn.confirm:hover {
+    background: #e60000;
+  }
+  .action-btn.cancel {
+    background: #eee;
+    color: #222;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 24px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .action-btn.cancel:hover {
+    background: #ccc;
+  }
+
+  .update-notice {
+    margin-top: 15px;
+    padding: 10px;
+    background: rgba(255, 107, 107, 0.1);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .update-notice p {
+    margin: 0 0 10px 0;
+    color: #ff6b6b;
+    font-weight: 600;
+  }
+
+  .update-btn {
+    background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
     font-size: 12px;
     font-weight: 600;
-    padding: 6px 10px;
     cursor: pointer;
     transition: all 0.3s ease;
   }
 
-  .preset-btn.load:hover,
-  .preset-btn.edit:hover,
-  .preset-btn.create:hover {
-    background: rgba(0, 229, 255, 0.1);
+  .update-btn:hover {
+    background: linear-gradient(45deg, #ff5252, #ff7676);
     transform: translateY(-1px);
   }
 
-  .preset-btn.delete {
-    border-color: #ff6b6b;
-    color: #ff6b6b;
+
+
+  /* License Test Modal Styles */
+  .license-test-modal {
+    max-width: 500px;
+    width: 90vw;
+    min-height: 300px;
   }
 
-  .preset-btn.delete:hover {
-    background: rgba(255, 107, 107, 0.1);
-    transform: translateY(-1px);
-  }
-
-  .preset-btn.load:disabled,
-  .preset-btn.edit:disabled,
-  .preset-btn.delete:disabled,
-  .preset-btn.create:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-  }
-
-  .create-preset {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    margin-bottom: 12px;
-  }
-
-  .preset-name-input {
-    flex: 1;
-    background: transparent;
-    border: 2px solid #00e5ff;
-    border-radius: 6px;
-    color: #ffffff;
-    font-size: 14px;
-    padding: 8px 12px;
-    outline: none;
-  }
-
-  .preset-name-input:focus {
-    border-color: #00e5ff;
-    box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.2);
-  }
-
-  .preset-name-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  /* Editable Number Input Styles */
-  .win-number-input,
-  .goal-value-input {
-    background: transparent;
-    border: none;
-    outline: none;
-    color: inherit;
-    font-family: inherit;
-    font-size: inherit;
-    font-weight: inherit;
+  .license-input-container {
     text-align: center;
-    width: 100%;
-    padding: 0;
-    margin: 0;
-    caret-color: #00e5ff;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-    /* Remove default input styling */
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    /* Prevent text selection */
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
+    margin: 20px 0;
   }
 
-  .win-number-input {
-    font-family: 'MiSansThai-Bold', sans-serif;
-    font-weight: 700;
-    color: #00e5ff;
-    text-align: center;
-    width: 100%;
-    background: transparent;
-    border: none;
-    outline: none;
-    line-height: 1.1;
-    letter-spacing: 0.5px;
-    overflow: visible;
-    padding: 0;
-  }
-  .win-size-2.win-number-input { font-size: 100px; }
-  .win-size-3.win-number-input { font-size: 68px; }
-  .win-size-4.win-number-input { font-size: 55px; }
-  .win-size-5.win-number-input { font-size: 45px; }
-  .win-size-6.win-number-input { font-size: 38px; }
-  .win-number-input::selection {
-    background: #00e5ff33;
-  }
-
-  .goal-value-input {
-    font-size: calc(476px * 0.063);
+  .license-input-container label {
+    display: block;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
     font-weight: 600;
-    color: #00e5ff;
-    font-family: 'MiSansThai-Semibold', sans-serif;
+    color: #333;
   }
 
-  /* Blinking cursor effect */
-  .win-number-input:focus,
-  .goal-value-input:focus {
-    animation: blink 1s infinite;
-  }
-
-  @keyframes blink {
-    0%, 50% { 
-      border-right: 2px solid #00e5ff;
-      margin-right: -2px;
-    }
-    51%, 100% { 
-      border-right: 2px solid transparent;
-      margin-right: 0;
-    }
-  }
-
-  .win-number,
-  .goal-value {
-    cursor: pointer;
-    transition: all 0.2s ease;
-    user-select: none;
+  .license-key-input {
+    width: 100%;
+    padding: 15px 20px;
+    font-size: 18px;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border: 2px solid transparent;
+    border-radius: 12px;
+    text-align: center;
+    letter-spacing: 2px;
+    font-family: 'Courier New', monospace;
+    color: #ffffff;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     position: relative;
   }
 
-  .win-number:hover,
-  .goal-value:hover {
-    color: #00e5ff;
-    text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
-    transform: scale(1.02);
+  .license-key-input::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57, #ff9ff3, #54a0ff);
+    border-radius: 14px;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
   }
 
-  .win-number:focus,
-  .goal-value:focus {
+  .license-key-input:focus {
     outline: none;
-    color: #00e5ff;
-    text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+    border-color: transparent;
+    box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.3);
+    transform: translateY(-2px);
   }
 
-  /* Enhanced warning effect for out of range values */
-  .win-number-input.warning,
-  .goal-value-input.warning {
+  .license-key-input:focus::before {
+    opacity: 1;
+  }
+
+  .license-key-input::placeholder {
+    color: #6c757d;
+    letter-spacing: 1px;
+    opacity: 0.7;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 30px;
+  }
+
+  .confirm-btn {
+    background: linear-gradient(135deg, #ff6b6b, #4ecdc4);
+    color: white;
+    border: none;
+    padding: 15px 40px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .confirm-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+  }
+
+  .confirm-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+  }
+
+  .confirm-btn:hover::before {
+    left: 100%;
+  }
+
+  .license-error {
+    margin-top: 10px;
+    padding: 10px;
+    background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+    color: white;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
     animation: shake 0.5s ease-in-out;
-    border: 2px solid #ff6b6b !important;
-    border-radius: 4px;
-    box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
-    color: #ff6b6b;
+  }
+
+  .license-success {
+    margin-top: 10px;
+    padding: 10px;
+    background: linear-gradient(135deg, #4ecdc4, #44a08d);
+    color: white;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    animation: bounce 0.5s ease-in-out;
   }
 
   @keyframes shake {
     0%, 100% { transform: translateX(0); }
-    10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
-    20%, 40%, 60%, 80% { transform: translateX(3px); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
   }
 
-  /* Focus indicator for better accessibility */
-  .win-number:focus-visible,
-  .goal-value:focus-visible {
-    outline: 2px solid #00e5ff;
-    outline-offset: 2px;
-    border-radius: 4px;
+  @keyframes bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-10px); }
+    60% { transform: translateY(-5px); }
   }
 
-  .win-number.win-size-2, .win-number-input.win-size-2 { font-size: 100px; }
-  .win-number.win-size-3, .win-number-input.win-size-3 { font-size: 68px; }
-  .win-number.win-size-4, .win-number-input.win-size-4 { font-size: 55px; }
-  .win-number.win-size-5, .win-number-input.win-size-5 { font-size: 45px; }
-  .win-number.win-size-6, .win-number-input.win-size-6 { font-size: 38px; }
 </style>
+
+<!-- License Modal -->
+{#if showLicenseModal}
+  <div class="modal-backdrop">
+    <div class="modal license-test-modal" on:click|stopPropagation>
+      <div class="modal-header">
+        <h3>🔑 รหัสยืนยัน</h3>
+      </div>
+      <div class="modal-body">
+        <div class="license-input-container">
+          <label for="license-key-input">กรุณากรอก License Key:</label>
+          <input 
+            id="license-key-input"
+            type="text" 
+            placeholder="XXXX-XXXX-XXXX-XXXX" 
+            class="license-key-input"
+            bind:value={licenseKeyInput}
+            on:keydown={(e) => e.key === 'Enter' && validateLicenseKey()}
+          />
+          {#if licenseError}
+            <div class="license-error">
+              ❌ {licenseError}
+            </div>
+          {/if}
+          {#if licenseSuccess}
+            <div class="license-success">
+              ✅ License Key ถูกต้อง!
+            </div>
+          {/if}
+        </div>
+        <div class="modal-actions">
+          <button class="confirm-btn" on:click={validateLicenseKey}>
+            ยืนยัน
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
