@@ -19,7 +19,7 @@ export interface UpdateCheckResult {
 
 class AutoUpdater {
   private currentVersion: string = '1.0.0';
-  private repoOwner: string = 'ArtYWoof';
+  private repoOwner: string = 'artywoof';
   private repoName: string = 'win-count-by-artywoof';
   private checkInterval: number | null = null;
   private isChecking: boolean = false;
@@ -53,6 +53,14 @@ class AutoUpdater {
       );
 
       if (!response.ok) {
+        // Don't throw error for 404 (no releases yet) - just return no update
+        if (response.status === 404) {
+          console.log('No GitHub releases found yet - this is normal for new repositories');
+          return {
+            hasUpdate: false,
+            currentVersion: this.currentVersion
+          };
+        }
         throw new Error(`GitHub API error: ${response.status}`);
       }
 
@@ -87,7 +95,8 @@ class AutoUpdater {
       };
 
     } catch (error) {
-      console.error('Failed to check for updates:', error);
+      // Only log as warning for network errors, not as error
+      console.warn('Update check failed (this is normal if no releases exist yet):', error);
       return {
         hasUpdate: false,
         currentVersion: this.currentVersion,

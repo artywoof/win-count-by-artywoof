@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
   import audioManager from '$lib/audioManager';
   import { hotkeySettings, keybindToString, type Keybind } from '$lib/stores';
   import { registerHotkeysFromSettings, getHotkeyConflicts } from '$lib/hotkeyManager';
@@ -22,7 +23,7 @@
   let recordingKeys: string[] = [];
   let recordingKeybind: Partial<Keybind> = {};
   let recordingTimeout: number | null = null;
-  const RECORDING_TIMEOUT_MS = 5000;
+  const RECORDING_TIMEOUT_MS = 30000; // เพิ่มเป็น 30 วินาที
 
   // General settings
   let generalSettings = {
@@ -63,51 +64,64 @@
     }
   }
 
+
+
   // Hotkey recording functions
-  function startRecording(actionId: string) {
+  async function startRecording(actionId: string) {
+    console.log('🎤 Starting recording for:', actionId);
+    console.log('🎤 Current recordingHotkey before:', recordingHotkey);
+    
     recordingHotkey = actionId;
     recordingKeybind = {};
     recordingKeys = [];
     
+    console.log('🎤 Current recordingHotkey after:', recordingHotkey);
+    
+    // Disable global hotkeys first
+    try {
+      await invoke('disable_global_hotkeys');
+      console.log('🧹 Global hotkeys disabled for recording');
+    } catch (error) {
+      console.error('❌ Failed to disable global hotkeys:', error);
+    }
+    
     // Set timeout to stop recording automatically
-    if (recordingTimeout) clearTimeout(recordingTimeout);
-    recordingTimeout = setTimeout(stopRecording, RECORDING_TIMEOUT_MS);
+    if (recordingTimeout) {
+      clearTimeout(recordingTimeout);
+      console.log('⏰ Previous recording timeout cleared');
+    }
+    recordingTimeout = setTimeout(() => {
+      console.log('⏰ Recording timeout reached, stopping recording');
+      stopRecording();
+    }, RECORDING_TIMEOUT_MS);
+    
+    console.log('🎤 Recording started, waiting for key press... (timeout:', RECORDING_TIMEOUT_MS, 'ms)');
   }
 
+
+
   function stopRecording() {
+    console.log('🛑 stopRecording called, recordingHotkey:', recordingHotkey);
+    
     if (recordingTimeout) {
       clearTimeout(recordingTimeout);
       recordingTimeout = null;
+      console.log('⏰ Recording timeout cleared');
     }
+    
     recordingHotkey = '';
     recordingKeybind = {};
     recordingKeys = [];
+    
+    console.log('🔄 Recording state reset');
+    
+    // Re-enable global hotkeys
+    registerHotkeysFromSettings();
+    console.log('✅ Global hotkeys re-enabled');
   }
 
-  function handleHotkeyRecord(event: KeyboardEvent) {
-    if (!recordingHotkey) return;
-    
-    event.preventDefault();
-    event.stopPropagation();
 
-    const keybind: Keybind = {
-      code: event.code,
-      alt: event.altKey,
-      shift: event.shiftKey,
-      ctrl: event.ctrlKey,
-      meta: event.metaKey
-    };
-    
-    // Don't allow only modifier keys
-    if (["AltLeft","AltRight","ShiftLeft","ShiftRight","ControlLeft","ControlRight","MetaLeft","MetaRight"].includes(event.code)) return;
-    
-    recordingKeybind = keybind;
-    recordingKeys = [keybindToString(keybind)];
-    
-    // Accept any key combination (including 3-key combos)
-    hotkeySettings.updateAction(recordingHotkey, keybind);
-    stopRecording();
-  }
+
   
   // Save settings
   function saveGeneralSettings() {
@@ -259,17 +273,67 @@
     registerHotkeysFromSettings();
   }
 
-  // Handle escape key and hotkey recording
-  function handleKeydown(event: KeyboardEvent) {
-    if (recordingHotkey) {
-      handleHotkeyRecord(event);
-    } else if (event.key === 'Escape') {
-      closeModal();
-    }
-  }
+
 
   // Load settings when component is created
   loadSettings();
+
+  // Add keydown listener when component mounts
+  onMount(() => {
+    console.log('🔧 SettingsModal mounted, adding keydown listener');
+    
+    // Add global keydown listener
+    const handleGlobalKeydown = (event: KeyboardEvent) => {
+      console.log('🎹 Global keydown event received:', event.code, 'Recording:', recordingHotkey, 'Target:', event.target);
+      
+      if (!recordingHotkey) {
+        console.log('🚫 Not recording, ignoring keydown');
+        return;
+      }
+      
+      console.log('🎤 Recording hotkey:', recordingHotkey, 'Event:', event.code, 'Alt:', event.altKey, 'Shift:', event.shiftKey, 'Ctrl:', event.ctrlKey);
+      
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Don't allow only modifier keys
+      if (["AltLeft","AltRight","ShiftLeft","ShiftRight","ControlLeft","ControlRight","MetaLeft","MetaRight"].includes(event.code)) {
+        console.log('🚫 Ignoring modifier-only key');
+        return;
+      }
+
+      const keybind: Keybind = {
+        code: event.code,
+        alt: event.altKey,
+        shift: event.shiftKey,
+        ctrl: event.ctrlKey,
+        meta: event.metaKey
+      };
+      
+      console.log('✅ Saving hotkey:', keybindToString(keybind));
+      
+      // Update the hotkey settings
+      hotkeySettings.update(settings => {
+        if (settings.actions[recordingHotkey as keyof typeof settings.actions]) {
+          settings.actions[recordingHotkey as keyof typeof settings.actions].currentKeybind = keybind;
+        }
+        return settings;
+      });
+      
+      // Stop recording
+      stopRecording();
+    };
+
+    // Add listener to window instead of document for global capture
+    window.addEventListener('keydown', handleGlobalKeydown, true);
+    console.log('✅ Keydown listener added to window with capture');
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeydown, true);
+      console.log('🧹 Keydown listener removed from window');
+    };
+  });
 
   // Watch hotkeySettings for changes and re-register hotkeys
   $:
@@ -279,11 +343,13 @@
     });
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+
+
+
 
 <!-- Modal Backdrop -->
 <div class="modal-backdrop" role="presentation" tabindex="0" on:click={closeModal} on:keydown={(e) => { if (e.key === 'Escape') closeModal(); }}>
-  <div class="modal-container" role="dialog" aria-modal="true" tabindex="-1" on:click|stopPropagation>
+  <div class="modal-container" role="dialog" aria-modal="true" tabindex="0" on:click|stopPropagation>
     <!-- Modal Header -->
     <div class="modal-header">
       <h2>⚙️ ตั้งค่า</h2>
@@ -350,7 +416,10 @@
                   <button 
                     class="change-hotkey-btn"
                     class:recording={recordingHotkey === action.id}
-                    on:click={() => startRecording(action.id)}
+                    on:click={() => {
+                      console.log('🔘 Button clicked for action:', action.id);
+                      startRecording(action.id);
+                    }}
                     disabled={recordingHotkey && recordingHotkey !== action.id}
                   >
                     {recordingHotkey === action.id ? '⏹️ หยุด' : '✏️ เปลี่ยน'}
@@ -646,10 +715,7 @@
       {/if}
     </div>
 
-    <!-- Modal Footer -->
-    <div class="modal-footer">
-      <button class="primary-btn" on:click={closeModal}>✅ ตกลง</button>
-    </div>
+
   </div>
 </div>
 
@@ -672,9 +738,9 @@
     background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
     border: 1px solid #333;
     border-radius: 12px;
-    width: 90%;
-    max-width: 700px;
-    max-height: 80vh;
+    width: 98%;
+    max-width: 1200px;
+    max-height: 90vh;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
     animation: slideIn 0.3s ease-out;
     overflow: hidden;
@@ -892,8 +958,8 @@
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid #333;
     border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 20px;
+    padding: 24px;
+    margin-bottom: 24px;
   }
 
   .setting-row {
@@ -929,7 +995,7 @@
   }
 
   .volume-control input[type="range"] {
-    width: 120px;
+    width: 300px;
     accent-color: #007AFF;
   }
 
@@ -963,7 +1029,8 @@
 
   .sound-grid {
     display: grid;
-    gap: 12px;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
     margin-bottom: 20px;
   }
 
@@ -971,11 +1038,12 @@
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid #333;
     border-radius: 8px;
-    padding: 16px;
+    padding: 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     transition: all 0.2s;
+    min-height: 100px;
   }
 
   .sound-item:hover {

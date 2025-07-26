@@ -1,3 +1,0 @@
-<!-- Backup of PresetManager.svelte before iPhone 16 Pro style UI update -->
-<!-- Date: 2025-07-02 -->
-<!-- ...existing code... -->

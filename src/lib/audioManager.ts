@@ -131,9 +131,9 @@ class AudioManager {
       }
     }
 
-    // Play default sounds
+    // Play default sounds using beep (no file loading)
     try {
-      console.log(`🔊 AudioManager: Playing default sound '${soundName}'`);
+      console.log(`🔊 AudioManager: Playing default beep sound '${soundName}'`);
       switch (soundName) {
         case 'increase':
           console.log('🔊 AudioManager: Creating beep sound - frequency: 800, duration: 0.1');
@@ -161,10 +161,10 @@ class AudioManager {
           console.warn(`🔊 AudioManager: Unknown sound: ${soundName}`);
           return false;
       }
-      console.log(`🔊 AudioManager: Successfully initiated sound '${soundName}'`);
+      console.log(`🔊 AudioManager: Successfully initiated beep sound '${soundName}'`);
       return true;
     } catch (error) {
-      console.error(`🔊 AudioManager: Failed to play default sound '${soundName}':`, error);
+      console.error(`🔊 AudioManager: Failed to play default beep sound '${soundName}':`, error);
       return false;
     }
   }

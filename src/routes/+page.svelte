@@ -101,7 +101,12 @@
       isLicenseValid = licenseManager.isLicenseValid();
       licenseStatusMessage = licenseManager.getStatusMessage();
       
-      console.log('🔑 License status:', licenseStatusMessage);
+      // Only log if license is valid, otherwise it's expected behavior
+      if (isLicenseValid) {
+        console.log('🔑 License status:', licenseStatusMessage);
+      } else {
+        console.log('🔑 License not activated yet - this is normal for first-time users');
+      }
       
       if (isLicenseValid) {
         isAppReady = true; // อนุญาตให้แสดงแอพหลัก
@@ -109,9 +114,9 @@
         showLicenseModal = true; // แสดง Modal ให้กรอก License
       }
     } catch (error) {
-      console.error('❌ Failed to check license status:', error);
+      console.warn('⚠️ License check failed (this is normal for first-time users):', error);
       isLicenseValid = false;
-      licenseStatusMessage = 'เกิดข้อผิดพลาดในการตรวจสอบ License';
+      licenseStatusMessage = 'ยังไม่ได้เปิดใช้งาน License';
       showLicenseModal = true; // แสดง Modal ให้กรอก License
     }
   }
@@ -130,6 +135,23 @@
       licenseError = '';
       licenseSuccess = '';
     }
+  }
+
+  // ฟังก์ชันจัดการ License Key formatting
+  function formatLicenseKey(input: string): string {
+    // ลบอักขระที่ไม่ใช่ตัวอักษรและตัวเลข
+    let value = input.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    // จำกัดความยาวไม่เกิน 16 ตัวอักษร
+    if (value.length > 16) value = value.substring(0, 16);
+    
+    // เพิ่ม - ทุก 4 ตัวอักษร
+    let formatted = '';
+    for (let i = 0; i < value.length; i++) {
+      if (i > 0 && i % 4 === 0) formatted += '-';
+      formatted += value[i];
+    }
+    
+    return formatted;
   }
 
   async function validateLicenseKey() {
@@ -470,7 +492,10 @@
     }
   }
 
+
+
   async function copyOverlayLink() {
+    // ใช้ localhost สำหรับเครื่องเดียวกัน
     const overlayUrl = 'http://localhost:777/overlay.html';
     if (navigator.clipboard) {
       try {
@@ -1671,7 +1696,7 @@
 
             <!-- Modal Footer -->
             <div class="modal-footer">
-              <button class="primary-btn" on:click={() => showSettingsModal = false}>✅ ตกลง</button>
+  
             </div>
           </div>
         </div>
@@ -3186,6 +3211,11 @@
             class="license-key-input"
             bind:value={licenseKeyInput}
             on:keydown={(e) => e.key === 'Enter' && validateLicenseKey()}
+            on:input={(e) => {
+              // เพิ่ม - อัตโนมัติตามรูปแบบ XXXX-XXXX-XXXX-XXXX
+              const target = e.target as HTMLInputElement;
+              licenseKeyInput = formatLicenseKey(target.value);
+            }}
           />
           {#if licenseError}
             <div class="license-error">

@@ -50,7 +50,7 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://releases.artywoof.com/win-count/{{target}}/{{current_version}}"
+        "https://github.com/artywoof/win-count-by-artywoof/releases/latest/download/latest.json"
       ],
       "dialog": true,
       "pubkey": "YOUR_PUBLIC_KEY_HERE"
