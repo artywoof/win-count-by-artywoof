@@ -120,26 +120,117 @@ export function getHotkeyConflicts(settings = get(hotkeySettings)) {
   const used: string[] = [];
   const conflicts: string[] = [];
   for (const action of Object.values(settings.actions)) {
-    const str = keybindToString(action.currentKeybind);
-    if (used.includes(str)) conflicts.push(str);
-    else used.push(str);
+    if (action && action.currentKeybind) {
+      const str = keybindToString(action.currentKeybind);
+      if (str && used.includes(str)) conflicts.push(str);
+      else if (str) used.push(str);
+    }
   }
   return conflicts;
 }
 
 // Register hotkeys from settings (dynamic)
 export async function registerHotkeysFromSettings() {
-  // DISABLED: Rust backend handles hotkeys directly to avoid conflicts
-  // await unregisterAllHotkeys();
-  // const settings = get(hotkeySettings);
-  // if (!settings.enabled) return;
+  console.log('🔄 Registering hotkeys from settings...');
   
-  console.log('🚫 Frontend hotkey registration disabled - using Rust backend hotkeys');
-  console.log('🔧 To re-enable, modify registerHotkeysFromSettings() in hotkeyManager.ts');
+  try {
+    // Get current settings
+    const settings = get(hotkeySettings);
+    if (!settings.enabled) {
+      console.log('🚫 Hotkeys disabled in settings');
+      return;
+    }
+    
+    // Convert frontend hotkey settings to backend format
+    const hotkeyMap: Record<string, string> = {};
+    
+    for (const [actionId, action] of Object.entries(settings.actions)) {
+      if (action && action.currentKeybind) {
+        const hotkeyString = keybindToString(action.currentKeybind);
+        if (hotkeyString) {
+          // Convert display format to backend format
+          const backendFormat = convertToBackendFormat(hotkeyString);
+          hotkeyMap[actionId] = backendFormat;
+          console.log(`🎹 Mapped hotkey: ${actionId} -> ${hotkeyString} -> ${backendFormat}`);
+        }
+      }
+    }
+    
+    // Check if we're resetting to defaults (all hotkeys match defaults)
+    const isResettingToDefaults = Object.keys(hotkeyMap).length === 4 && 
+      hotkeyMap.increment === 'Alt+Equal' &&
+      hotkeyMap.decrement === 'Alt+Minus' &&
+      hotkeyMap.increment10 === 'Shift+Alt+Equal' &&
+      hotkeyMap.decrement10 === 'Shift+Alt+Minus';
+    
+    if (isResettingToDefaults) {
+      console.log('🔄 Detected reset to defaults - clearing backend storage');
+      // Clear backend storage by sending empty hotkeys
+      try {
+        await invoke('clear_hotkeys');
+        console.log('✅ Backend hotkeys cleared');
+      } catch (error) {
+        console.log('⚠️ Backend clear_hotkeys not available, continuing with normal update');
+      }
+    }
+    
+    // Send hotkeys to backend for registration
+    for (const [action, hotkey] of Object.entries(hotkeyMap)) {
+      try {
+        console.log(`🎹 Sending hotkey to backend: ${action} -> ${hotkey}`);
+        await invoke('update_hotkey', { action, hotkey });
+      } catch (error) {
+        console.error(`❌ Failed to send hotkey ${action}:`, error);
+      }
+    }
+    
+    // Trigger backend hotkey reload
+    try {
+      await invoke('reload_hotkeys_command');
+      console.log('✅ Backend hotkeys reloaded successfully');
+    } catch (error) {
+      console.error('❌ Failed to reload backend hotkeys:', error);
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to register hotkeys from settings:', error);
+  }
+}
+
+// Convert display format to backend format
+function convertToBackendFormat(displayFormat: string): string {
+  // Remove spaces and convert special characters
+  let backendFormat = displayFormat.replace(/\s+/g, '');
   
-  // TODO: Integrate with Rust backend hotkey system
-  // For now, hotkeys are handled directly in main.rs
-  return;
+  // Convert special characters back to their code names
+  const specialCharMap: { [key: string]: string } = {
+    '=': 'Equal',
+    '-': 'Minus',
+    'Space': 'Space',
+    'Up': 'ArrowUp',
+    'Down': 'ArrowDown',
+    'Left': 'ArrowLeft',
+    'Right': 'ArrowRight',
+  };
+  
+  // Split by + and convert each part
+  const parts = backendFormat.split('+');
+  const convertedParts = parts.map(part => {
+    return specialCharMap[part] || part;
+  });
+  
+  return convertedParts.join('+');
+}
+
+// Clear backend hotkeys
+export async function clearBackendHotkeys() {
+  console.log('🔄 Clearing backend hotkeys...');
+  try {
+    await invoke('clear_hotkeys');
+    console.log('✅ Backend hotkeys cleared successfully');
+  } catch (error) {
+    console.error('❌ Failed to clear backend hotkeys:', error);
+  }
 }
 
 // --- Register hotkeys globally and fallback locally ---

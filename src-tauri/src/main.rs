@@ -23,6 +23,27 @@ use sha2::{Sha256, Digest};
 #[cfg(windows)]
 use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
 
+// Function to get safe app data directory
+fn get_app_data_dir() -> Result<PathBuf, String> {
+    let app_data_dir = dirs::data_local_dir()
+        .ok_or("Failed to get local data directory")?
+        .join("Win Count by ArtYWoof");
+    
+    // Create directory if it doesn't exist
+    if !app_data_dir.exists() {
+        fs::create_dir_all(&app_data_dir)
+            .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+    }
+    
+    Ok(app_data_dir)
+}
+
+// Function to get file path in app data directory
+fn get_app_data_file(filename: &str) -> Result<PathBuf, String> {
+    let app_data_dir = get_app_data_dir()?;
+    Ok(app_data_dir.join(filename))
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -37,7 +58,7 @@ fn get_app_version() -> String {
 // License management functions
 #[tauri::command]
 fn get_license_key() -> Result<String, String> {
-    let license_path = std::env::temp_dir().join("win_count_license.json");
+    let license_path = get_app_data_file("win_count_license.json")?;
     if license_path.exists() {
         let license_data_str = fs::read_to_string(license_path)
             .map_err(|_| "No license key found".to_string())?;
@@ -64,20 +85,375 @@ fn save_license_key(key: String) -> Result<(), String> {
     let license_json = serde_json::to_string(&license_data)
         .map_err(|e| format!("Failed to serialize license data: {}", e))?;
     
-    let license_path = std::env::temp_dir().join("win_count_license.json");
+    let license_path = get_app_data_file("win_count_license.json")?;
     fs::write(license_path, license_json)
         .map_err(|e| format!("Failed to save license key: {}", e))
 }
 
 #[tauri::command]
 fn remove_license_key() -> Result<(), String> {
-    let license_path = std::env::temp_dir().join("win_count_license.json");
+    let license_path = get_app_data_file("win_count_license.json")?;
     if license_path.exists() {
         fs::remove_file(license_path)
             .map_err(|e| format!("Failed to remove license key: {}", e))
     } else {
         Ok(())
     }
+}
+
+#[tauri::command]
+fn update_hotkey(action: String, hotkey: String) -> Result<(), String> {
+    println!("🎹 Updating hotkey: {} -> {}", action, hotkey);
+    
+    // Load existing hotkeys
+    let mut hotkeys = load_custom_hotkeys();
+    println!("📋 Current hotkeys before update: {:?}", hotkeys);
+    
+    // Update the specific action
+    hotkeys.insert(action.clone(), hotkey.clone());
+    
+    // Save updated hotkeys
+    save_custom_hotkeys(&hotkeys)?;
+    println!("💾 Hotkeys saved to storage");
+    
+    println!("✅ Hotkey updated and saved: {} -> {}", action, hotkey);
+    println!("✅ Hotkey saved - frontend will trigger reload");
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn reload_hotkeys_command(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
+    println!("🔄 RELOAD_HOTKEYS_COMMAND CALLED!");
+    println!("🔄 Reloading hotkeys...");
+    
+    match register_hotkeys_dynamically(&app, &state, &broadcast_tx) {
+        Ok(_) => {
+            println!("✅ RELOAD_HOTKEYS_COMMAND COMPLETED SUCCESSFULLY!");
+    Ok(())
+        },
+        Err(e) => {
+            println!("❌ RELOAD_HOTKEYS_COMMAND FAILED: {}", e);
+            Err(e)
+        }
+    }
+}
+
+// Function to reload hotkeys dynamically
+fn reload_hotkeys() -> Result<(), String> {
+    println!("🔄 Attempting to reload hotkeys dynamically...");
+    
+    // This function will be called from the setup function after we have access to the global shortcut manager
+    // For now, we'll return success and let the setup function handle the actual reloading
+    Ok(())
+}
+
+// Function to register hotkeys dynamically
+fn register_hotkeys_dynamically(app_handle: &tauri::AppHandle, state: &SharedWinState, broadcast_tx: &broadcast::Sender<WinState>) -> Result<(), String> {
+    println!("🎮 Registering hotkeys dynamically...");
+    
+    let gs = app_handle.global_shortcut();
+    
+    // Unregister all existing shortcuts first
+    let _ = gs.unregister_all();
+    println!("🧹 Cleared existing shortcuts");
+    
+    // Load custom hotkeys from localStorage
+    let custom_hotkeys = load_custom_hotkeys();
+    println!("📋 Loaded hotkeys from storage: {:?}", custom_hotkeys);
+    
+    // Convert custom hotkeys to Tauri format and create Shortcut objects
+    let mut tauri_hotkeys = Vec::new();
+    let mut hotkey_mapping = std::collections::HashMap::new();
+    
+    println!("🎹 Processing {} custom hotkeys", custom_hotkeys.len());
+    
+    for (action, hotkey) in &custom_hotkeys {
+        println!("🎹 Processing hotkey: {} -> {}", action, hotkey);
+        
+        if let Ok(tauri_hotkey) = convert_hotkey_format(hotkey) {
+            println!("🎹 Converted to Tauri format: {} -> {}", hotkey, tauri_hotkey);
+            
+            // Parse the hotkey string into a Shortcut object
+            match tauri_hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>() {
+                Ok(shortcut) => {
+                    tauri_hotkeys.push(shortcut.clone());
+                    hotkey_mapping.insert(shortcut.to_string(), action.clone());
+                    println!("✅ Successfully prepared hotkey: {} -> {} ({})", action, hotkey, tauri_hotkey);
+                }
+                Err(e) => {
+                    println!("❌ Failed to parse hotkey: {} -> {} (error: {})", action, tauri_hotkey, e);
+                }
+            }
+        } else {
+            println!("❌ Failed to convert hotkey format: {} -> {}", action, hotkey);
+        }
+    }
+    
+    // If no custom hotkeys loaded, use defaults
+    if tauri_hotkeys.is_empty() {
+        println!("⚠️ No custom hotkeys found, using defaults");
+        let default_hotkeys = vec![
+            ("Alt+Equal".to_string(), "increment".to_string()),
+            ("Alt+Minus".to_string(), "decrement".to_string()),
+            ("Shift+Alt+Equal".to_string(), "increment10".to_string()),
+            ("Shift+Alt+Minus".to_string(), "decrement10".to_string())
+        ];
+        
+        for (hotkey, action) in default_hotkeys {
+            println!("🎹 Processing default hotkey: {} -> {}", action, hotkey);
+            if let Ok(tauri_hotkey) = convert_hotkey_format(&hotkey) {
+                println!("🎹 Converted default to Tauri format: {} -> {}", hotkey, tauri_hotkey);
+                if let Ok(shortcut) = tauri_hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>() {
+                    tauri_hotkeys.push(shortcut.clone());
+                    hotkey_mapping.insert(shortcut.to_string(), action.clone());
+                    println!("✅ Successfully prepared default hotkey: {} -> {} ({})", action, hotkey, tauri_hotkey);
+                } else {
+                    println!("❌ Failed to parse default hotkey: {} -> {}", action, tauri_hotkey);
+                }
+            } else {
+                println!("❌ Failed to convert default hotkey format: {} -> {}", action, hotkey);
+            }
+        }
+    }
+    
+    println!("🎯 Final hotkey mapping: {:?}", hotkey_mapping);
+    println!("🎯 Final tauri hotkeys: {:?}", tauri_hotkeys.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    
+    // Register all hotkeys with strict key down only filtering
+    match gs.on_shortcuts(tauri_hotkeys.clone(), {
+        let app_handle = app_handle.clone();
+        let state = state.clone();
+        let broadcast_tx = broadcast_tx.clone();
+        
+        move |_app, shortcut, event| {
+            let shortcut_str = shortcut.to_string();
+            
+            // STRICT: Only process KeyDown events, completely ignore KeyUp
+            let event_str = format!("{:?}", event);
+            if event_str.contains("Up") || event_str.contains("Release") {
+                println!("🚫 IGNORING KEY UP: {} (event: {:?})", shortcut_str, event);
+                return;
+            }
+            
+            // Only process KeyDown events
+            if !event_str.contains("Down") && !event_str.contains("Press") {
+                println!("🚫 IGNORING UNKNOWN EVENT: {} (event: {:?})", shortcut_str, event);
+                return;
+            }
+            
+            println!("✅ KEY DOWN CONFIRMED: '{}' -> {:?}", shortcut_str, event);
+            
+            // Find which action this hotkey corresponds to
+            if let Some(action) = hotkey_mapping.get(&shortcut_str) {
+                println!("🎯 Hotkey '{}' matches action: {}", shortcut_str, action);
+                
+                // Handle the action with proper state access
+                match action.as_str() {
+                    "increment" => {
+                        println!("⬆️ increase_win (+1) - STRICT KEY DOWN ONLY");
+                        change_win(&app_handle, &state, &broadcast_tx, 1);
+                    }
+                    "decrement" => {
+                        println!("⬇️ decrease_win (-1) - STRICT KEY DOWN ONLY");
+                        change_win(&app_handle, &state, &broadcast_tx, -1);
+                    }
+                    "increment10" => {
+                        println!("⬆️⬆️ big increase_win (+10) - STRICT KEY DOWN ONLY");
+                        change_win_with_step(&app_handle, &state, &broadcast_tx, 1, 10);
+                    }
+                    "decrement10" => {
+                        println!("⬇️⬇️ big decrease_win (-10) - STRICT KEY DOWN ONLY");
+                        change_win_with_step(&app_handle, &state, &broadcast_tx, -1, 10);
+                    }
+                    _ => {
+                        println!("❓ Unknown action: {}", action);
+                    }
+                }
+            } else {
+                println!("❓ No action found for hotkey: {}", shortcut_str);
+            }
+        }
+    }) {
+        Ok(_) => {
+            println!("✅ Successfully registered {} hotkeys with strict key down filtering", tauri_hotkeys.len());
+            for (i, hotkey) in tauri_hotkeys.iter().enumerate() {
+                println!("  {}. {}", i + 1, hotkey.to_string());
+            }
+            Ok(())
+        }
+        Err(e) => {
+            println!("❌ Failed to register hotkeys: {}", e);
+            Err(format!("Failed to register hotkeys: {}", e))
+        }
+    }
+}
+
+// Helper function to convert frontend hotkey format to Tauri format
+fn convert_hotkey_format(hotkey: &str) -> Result<String, String> {
+    println!("🔄 Converting hotkey format: {}", hotkey);
+    
+    // Handle single keys first (no modifiers)
+    if hotkey.len() == 1 {
+        let key = hotkey.to_uppercase();
+        // Single keys need to be prefixed with "Key" for Tauri
+        return Ok(format!("Key{}", key));
+    }
+    
+    // Handle function keys (F1, F2, etc.)
+    if hotkey.starts_with("F") && hotkey.len() > 1 {
+        // Function keys are already in correct format
+        return Ok(hotkey.to_uppercase());
+    }
+    
+    // Handle special single keys
+    let special_keys = [
+        ("Enter", "Enter"),
+        ("Space", "Space"),
+        ("Tab", "Tab"),
+        ("Escape", "Escape"),
+        ("Backspace", "Backspace"),
+        ("Delete", "Delete"),
+        ("Home", "Home"),
+        ("End", "End"),
+        ("PageUp", "PageUp"),
+        ("PageDown", "PageDown"),
+        ("Insert", "Insert"),
+        ("PrintScreen", "PrintScreen"),
+        ("ScrollLock", "ScrollLock"),
+        ("Pause", "Pause"),
+        ("NumLock", "NumLock"),
+        ("CapsLock", "CapsLock"),
+        ("Equal", "Equal"),
+        ("Minus", "Minus"),
+    ];
+    
+    for (original, tauri) in special_keys {
+        if hotkey == original {
+            return Ok(tauri.to_string());
+        }
+    }
+    
+    // Handle modifier combinations (Ctrl+A, Alt+=, etc.)
+    let mut converted = hotkey.to_string();
+    
+    // Replace common modifiers
+    converted = converted.replace("Ctrl+", "Control+");
+    converted = converted.replace("Alt+", "Alt+");
+    converted = converted.replace("Shift+", "Shift+");
+    converted = converted.replace("Meta+", "Meta+");
+    
+    // Handle special keys in combinations (only if they're single characters)
+    if converted.contains("=") && !converted.contains("Equal") {
+    converted = converted.replace("=", "Equal");
+    }
+    if converted.contains("-") && !converted.contains("Minus") {
+    converted = converted.replace("-", "Minus");
+    }
+    converted = converted.replace(" ", "Space");
+    
+    // Convert single letters in combinations to Key format
+    let parts: Vec<&str> = converted.split('+').collect();
+    if parts.len() > 1 {
+        let last_part = parts.last().unwrap();
+        if last_part.len() == 1 && last_part.chars().next().unwrap().is_alphabetic() {
+            let key_part = format!("Key{}", last_part.to_uppercase());
+            let mut new_parts = parts[..parts.len()-1].to_vec();
+            new_parts.push(&key_part);
+            converted = new_parts.join("+");
+        }
+    }
+    
+    println!("🔄 Converted hotkey: {} -> {}", hotkey, converted);
+    Ok(converted)
+}
+
+// Function to load custom hotkeys from localStorage equivalent
+fn load_custom_hotkeys() -> std::collections::HashMap<String, String> {
+    println!("🎹 LOAD_CUSTOM_HOTKEYS CALLED!");
+    let mut hotkeys = std::collections::HashMap::new();
+    
+    // Try to load from a file (equivalent to localStorage)
+    let hotkey_path = get_app_data_file("win_count_hotkeys.json").unwrap_or_else(|_| {
+        println!("❌ Failed to get hotkey file path, using temp directory");
+        std::env::temp_dir().join("win_count_hotkeys.json")
+    });
+    println!("🎹 Checking hotkey file: {:?}", hotkey_path);
+    
+    if hotkey_path.exists() {
+        println!("🎹 Hotkey file exists, attempting to load...");
+        if let Ok(hotkey_data) = fs::read_to_string(&hotkey_path) {
+            println!("🎹 Hotkey file content: {}", hotkey_data);
+            if let Ok(parsed) = serde_json::from_str::<std::collections::HashMap<String, String>>(&hotkey_data) {
+                hotkeys = parsed;
+                println!("🎹 Loaded custom hotkeys: {:?}", hotkeys);
+            } else {
+                println!("❌ Failed to parse hotkey file");
+            }
+        } else {
+            println!("❌ Failed to read hotkey file");
+        }
+    } else {
+        println!("🎹 Hotkey file does not exist");
+    }
+    
+    // If no custom hotkeys loaded, try to load from presets
+    if hotkeys.is_empty() {
+        println!("🎹 No custom hotkeys found, checking presets...");
+        let presets_path = get_app_data_file("win_count_presets.json").unwrap_or_else(|_| {
+            println!("❌ Failed to get presets file path, using temp directory");
+            std::env::temp_dir().join("win_count_presets.json")
+        });
+        println!("🎹 Checking presets file: {:?}", presets_path);
+        
+        if presets_path.exists() {
+            println!("🎹 Presets file exists, attempting to load...");
+            if let Ok(presets_data) = fs::read_to_string(&presets_path) {
+                println!("🎹 Presets file content: {}", presets_data);
+                if let Ok(presets) = serde_json::from_str::<Vec<PresetData>>(&presets_data) {
+                    // Use the first preset's hotkeys
+                    if let Some(first_preset) = presets.first() {
+                        hotkeys.insert("increment".to_string(), first_preset.hotkeys.increase.clone());
+                        hotkeys.insert("decrement".to_string(), first_preset.hotkeys.decrease.clone());
+                        hotkeys.insert("increment10".to_string(), format!("Shift+{}", first_preset.hotkeys.increase));
+                        hotkeys.insert("decrement10".to_string(), format!("Shift+{}", first_preset.hotkeys.decrease));
+                        println!("🎹 Loaded hotkeys from presets: {:?}", hotkeys);
+                    } else {
+                        println!("❌ No presets found in file");
+                    }
+                } else {
+                    println!("❌ Failed to parse presets file");
+                }
+            } else {
+                println!("❌ Failed to read presets file");
+            }
+        } else {
+            println!("🎹 Presets file does not exist");
+        }
+    }
+    
+    // Set defaults if not found - match frontend format
+    if hotkeys.is_empty() {
+        println!("🎹 No hotkeys found anywhere, using defaults");
+        hotkeys.insert("increment".to_string(), "Alt+Equal".to_string());
+        hotkeys.insert("decrement".to_string(), "Alt+Minus".to_string());
+        hotkeys.insert("increment10".to_string(), "Shift+Alt+Equal".to_string());
+        hotkeys.insert("decrement10".to_string(), "Shift+Alt+Minus".to_string());
+        println!("🎹 Using default hotkeys: {:?}", hotkeys);
+    }
+    
+    println!("🎹 LOAD_CUSTOM_HOTKEYS COMPLETED: {:?}", hotkeys);
+    hotkeys
+}
+
+// Function to save custom hotkeys
+fn save_custom_hotkeys(hotkeys: &std::collections::HashMap<String, String>) -> Result<(), String> {
+    let hotkey_path = get_app_data_file("win_count_hotkeys.json")?;
+    let hotkey_json = serde_json::to_string(hotkeys)
+        .map_err(|e| format!("Failed to serialize hotkeys: {}", e))?;
+    
+    fs::write(hotkey_path, hotkey_json)
+        .map_err(|e| format!("Failed to save hotkeys: {}", e))
 }
 
 #[tauri::command]
@@ -136,7 +512,7 @@ fn validate_license_key(key: String) -> Result<bool, String> {
     let current_machine_id = get_machine_id()?;
     
     // Load existing license data
-    let license_path = std::env::temp_dir().join("win_count_license.json");
+    let license_path = get_app_data_file("win_count_license.json")?;
     if license_path.exists() {
         if let Ok(license_data_str) = fs::read_to_string(&license_path) {
             if let Ok(license_data) = serde_json::from_str::<LicenseData>(&license_data_str) {
@@ -224,6 +600,9 @@ impl Default for HotkeyConfig {
 
 type SharedWinState = Arc<Mutex<WinState>>;
 type KeyTrackerMap = Arc<Mutex<HashMap<String, KeyEventTracker>>>;
+
+// Add global shortcut manager state
+type GlobalShortcutManager = Arc<Mutex<Option<tauri::AppHandle>>>;
 
 fn get_state_path() -> PathBuf {
     std::env::temp_dir().join("win_count_state.json")
@@ -401,7 +780,10 @@ fn change_win_with_step(app: &tauri::AppHandle, state: &SharedWinState, broadcas
             preset.show_crown = current_state.show_crown;
             
             // Save updated presets
-            let presets_path = std::env::temp_dir().join("win_count_presets.json");
+            let presets_path = get_app_data_file("win_count_presets.json").unwrap_or_else(|_| {
+                println!("❌ Failed to get presets file path, using temp directory");
+                std::env::temp_dir().join("win_count_presets.json")
+            });
             if let Ok(json) = serde_json::to_string_pretty(&presets) {
                 let _ = fs::write(&presets_path, json);
                 println!("💾 Auto-saved hotkey change to preset: {}", current_preset_name);
@@ -420,7 +802,10 @@ fn change_win_with_step(app: &tauri::AppHandle, state: &SharedWinState, broadcas
             presets.push(new_preset);
             
             // Save updated presets
-            let presets_path = std::env::temp_dir().join("win_count_presets.json");
+            let presets_path = get_app_data_file("win_count_presets.json").unwrap_or_else(|_| {
+                println!("❌ Failed to get presets file path, using temp directory");
+                std::env::temp_dir().join("win_count_presets.json")
+            });
             if let Ok(json) = serde_json::to_string_pretty(&presets) {
                 let _ = fs::write(&presets_path, json);
                 println!("💾 Created and auto-saved to new preset: {}", current_preset_name);
@@ -487,7 +872,10 @@ fn set_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx
             preset.show_crown = current_state.show_crown;
             
             // Save updated presets
-            let presets_path = std::env::temp_dir().join("win_count_presets.json");
+            let presets_path = get_app_data_file("win_count_presets.json").unwrap_or_else(|_| {
+                println!("❌ Failed to get presets file path, using temp directory");
+                std::env::temp_dir().join("win_count_presets.json")
+            });
             if let Ok(json) = serde_json::to_string_pretty(&presets) {
                 let _ = fs::write(&presets_path, json);
                 println!("💾 Auto-saved to preset: {}", current_preset_name);
@@ -522,7 +910,10 @@ fn set_goal(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_t
             preset.show_crown = current_state.show_crown;
             
             // Save updated presets
-            let presets_path = std::env::temp_dir().join("win_count_presets.json");
+            let presets_path = get_app_data_file("win_count_presets.json").unwrap_or_else(|_| {
+                println!("❌ Failed to get presets file path, using temp directory");
+                std::env::temp_dir().join("win_count_presets.json")
+            });
             if let Ok(json) = serde_json::to_string_pretty(&presets) {
                 let _ = fs::write(&presets_path, json);
                 println!("💾 Auto-saved to preset: {}", current_preset_name);
@@ -586,7 +977,7 @@ async fn copy_overlay_link() -> Result<String, String> {
 
 #[tauri::command]
 fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(), String> {
-    let presets_path = std::env::temp_dir().join("win_count_presets.json");
+    let presets_path = get_app_data_file("win_count_presets.json")?;
     
     println!("🔴 Attempting to save preset: {:?}", preset);
     
@@ -632,7 +1023,7 @@ fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(
 
 #[tauri::command]
 fn load_presets() -> Result<Vec<PresetData>, String> {
-    let presets_path = std::env::temp_dir().join("win_count_presets.json");
+    let presets_path = get_app_data_file("win_count_presets.json")?;
     
     println!("📋 Loading presets from: {:?}", presets_path);
     
@@ -696,6 +1087,27 @@ fn load_preset(name: String, app: tauri::AppHandle, state: State<'_, SharedWinSt
     let _ = app.emit("state-updated", s.clone());
     let _ = broadcast_tx.send(s.clone());
     
+    // Sync hotkeys with preset
+    let mut hotkeys = std::collections::HashMap::new();
+    hotkeys.insert("increment".to_string(), preset.hotkeys.increase.clone());
+    hotkeys.insert("decrement".to_string(), preset.hotkeys.decrease.clone());
+    hotkeys.insert("increment10".to_string(), format!("Shift+{}", preset.hotkeys.increase));
+    hotkeys.insert("decrement10".to_string(), format!("Shift+{}", preset.hotkeys.decrease));
+    
+    // Save hotkeys to sync with preset
+    if let Err(e) = save_custom_hotkeys(&hotkeys) {
+        println!("⚠️ Failed to save hotkeys for preset: {}", e);
+    } else {
+        println!("🎹 Synced hotkeys with preset: {:?}", hotkeys);
+        
+        // Reload hotkeys to make them active immediately
+        if let Err(e) = register_hotkeys_dynamically(&app, &state, &broadcast_tx) {
+            println!("⚠️ Failed to reload hotkeys after preset sync: {}", e);
+        } else {
+            println!("✅ Hotkeys reloaded after preset sync");
+        }
+    }
+    
     println!("✅ Loaded preset: {} | Updated Win: {} | Updated Goal: {}", name, s.win, s.goal);
     Ok(preset)
 }
@@ -706,7 +1118,7 @@ fn delete_preset(name: String) -> Result<(), String> {
         return Err("Cannot delete Default preset".to_string());
     }
     
-    let presets_path = std::env::temp_dir().join("win_count_presets.json");
+    let presets_path = get_app_data_file("win_count_presets.json")?;
     
     if !presets_path.exists() {
         return Ok(());
@@ -743,6 +1155,111 @@ fn play_test_sounds(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn test_hotkeys() -> Result<String, String> {
+    println!("🧪 Testing hotkeys...");
+    
+    // Load current hotkeys
+    let custom_hotkeys = load_custom_hotkeys();
+    println!("📋 Current hotkeys: {:?}", custom_hotkeys);
+    
+    // Test conversion for each hotkey
+    let mut conversion_results = Vec::new();
+    for (action, hotkey) in &custom_hotkeys {
+        match convert_hotkey_format(hotkey) {
+            Ok(converted) => {
+                conversion_results.push(format!("{} -> {} -> {}", action, hotkey, converted));
+                println!("✅ Conversion: {} -> {} -> {}", action, hotkey, converted);
+            },
+            Err(e) => {
+                conversion_results.push(format!("{} -> {} -> ERROR: {}", action, hotkey, e));
+                println!("❌ Conversion failed: {} -> {} -> {}", action, hotkey, e);
+            }
+        }
+    }
+    
+    let result = format!(
+        "Hotkeys loaded: {:?}\nConversions:\n{}", 
+        custom_hotkeys, 
+        conversion_results.join("\n")
+    );
+    
+    Ok(result)
+}
+
+#[tauri::command]
+fn clear_hotkeys() -> Result<(), String> {
+    println!("🧹 CLEAR_HOTKEYS COMMAND CALLED!");
+    println!("🧹 Clearing hotkeys...");
+
+    // Delete the hotkey file to force defaults
+    let hotkey_path = get_app_data_file("win_count_hotkeys.json")?;
+    println!("🧹 Hotkey file path: {:?}", hotkey_path);
+    
+    if hotkey_path.exists() {
+        println!("🧹 Hotkey file exists, attempting to delete...");
+        match fs::remove_file(&hotkey_path) {
+            Ok(_) => println!("✅ Hotkey file deleted successfully"),
+            Err(e) => println!("⚠️ Failed to delete hotkey file: {}", e),
+        }
+    } else {
+        println!("ℹ️ Hotkey file does not exist, already using defaults");
+    }
+
+    println!("🧹 CLEAR_HOTKEYS COMMAND COMPLETED!");
+    Ok(())
+}
+
+#[tauri::command]
+fn save_default_hotkeys() -> Result<(), String> {
+    println!("💾 SAVE_DEFAULT_HOTKEYS COMMAND CALLED!");
+    
+    // Create default hotkeys HashMap
+    let mut default_hotkeys = std::collections::HashMap::new();
+    default_hotkeys.insert("increment".to_string(), "Alt+Equal".to_string());
+    default_hotkeys.insert("decrement".to_string(), "Alt+Minus".to_string());
+    default_hotkeys.insert("increment10".to_string(), "Shift+Alt+Equal".to_string());
+    default_hotkeys.insert("decrement10".to_string(), "Shift+Alt+Minus".to_string());
+    
+    println!("💾 Saving default hotkeys: {:?}", default_hotkeys);
+    
+    // Save to file
+    match save_custom_hotkeys(&default_hotkeys) {
+        Ok(_) => {
+            println!("✅ Default hotkeys saved successfully");
+            Ok(())
+        },
+        Err(e) => {
+            println!("❌ Failed to save default hotkeys: {}", e);
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+fn check_hotkey_file() -> Result<String, String> {
+    println!("🔍 Checking hotkey file...");
+    
+    let hotkey_path = get_app_data_file("win_count_hotkeys.json")?;
+    let path_str = hotkey_path.to_string_lossy().to_string();
+    
+    if hotkey_path.exists() {
+        match fs::read_to_string(&hotkey_path) {
+            Ok(content) => {
+                println!("📄 Hotkey file exists with content: {}", content);
+                Ok(format!("File exists: {}\nContent: {}", path_str, content))
+            },
+            Err(e) => {
+                println!("❌ Failed to read hotkey file: {}", e);
+                Ok(format!("File exists but unreadable: {}\nError: {}", path_str, e))
+            }
+        }
+    } else {
+        println!("ℹ️ Hotkey file does not exist");
+        Ok(format!("File does not exist: {}", path_str))
+    }
+}
+
 fn start_http_server() {
     thread::spawn(move || {
         let rt = Runtime::new().unwrap();
@@ -751,6 +1268,96 @@ fn start_http_server() {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             
             println!("🌐 Starting HTTP server on 127.0.0.1:777");
+            
+            // Debug: Print current working directory
+            if let Ok(current_dir) = std::env::current_dir() {
+                println!("📁 Current working directory: {:?}", current_dir);
+            }
+            
+            // Debug: Print executable path
+            if let Ok(exe_path) = std::env::current_exe() {
+                println!("📁 Executable path: {:?}", exe_path);
+                if let Some(exe_dir) = exe_path.parent() {
+                    println!("📁 Executable directory: {:?}", exe_dir);
+                }
+            }
+            
+            // Debug: Check if static folder exists
+            let static_paths = vec![
+                "static",
+                "../static", 
+                "./static",
+                "../../static",
+                "resources/static",
+                "resources/static/overlay.html",  // Direct file check
+                "C:\\Program Files\\Win Count by ArtYWoof\\static",
+                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
+                "C:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
+                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static"
+            ];
+            
+            for path in &static_paths {
+                if std::path::Path::new(path).exists() {
+                    println!("✅ Static folder found at: {}", path);
+                    if let Ok(entries) = std::fs::read_dir(path) {
+                        for entry in entries {
+                            if let Ok(entry) = entry {
+                                println!("   📄 {:?}", entry.file_name());
+                            }
+                        }
+                    }
+                } else {
+                    println!("❌ Static folder not found at: {}", path);
+                }
+            }
+            
+            // Debug: Check MSI installation paths
+            let msi_paths = vec![
+                "C:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
+                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static",
+                "C:\\Program Files\\Win Count by ArtYWoof\\static",
+                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
+                "C:\\Program Files\\Win Count by ArtYWoof\\_up_\\static",
+                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\_up_\\static",
+                "D:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
+                "D:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static",
+                "D:\\Program Files\\Win Count by ArtYWoof\\static",
+                "D:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
+                "E:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
+                "E:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static",
+                "E:\\Program Files\\Win Count by ArtYWoof\\static",
+                "E:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
+                "F:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
+                "F:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static",
+                "F:\\Program Files\\Win Count by ArtYWoof\\static",
+                "F:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
+                // Add paths for executable directory
+                "C:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
+                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
+                "D:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
+                "D:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
+                "E:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
+                "E:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
+                "F:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
+                "F:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static"
+            ];
+            
+            println!("🔍 Checking MSI installation paths:");
+            for path in &msi_paths {
+                if std::path::Path::new(path).exists() {
+                    println!("✅ MSI path found: {}", path);
+                    if let Ok(entries) = std::fs::read_dir(path) {
+                        for entry in entries {
+                            if let Ok(entry) = entry {
+                                println!("   📄 {:?}", entry.file_name());
+                            }
+                        }
+                    }
+                } else {
+                    println!("❌ MSI path not found: {}", path);
+                }
+            }
+            
             let listener = TcpListener::bind("127.0.0.1:777").await.unwrap();
             
             loop {
@@ -767,9 +1374,66 @@ fn start_http_server() {
                                     if request.starts_with("GET /overlay.html") {
                                         println!("📄 Serving overlay.html");
                                         
-                                        // Read overlay.html file
-                                        match std::fs::read_to_string("../static/overlay.html") {
+                                        // Read overlay.html file - try multiple paths
+                                        let overlay_paths = vec![
+                                            "../static/overlay.html",
+                                            "static/overlay.html",
+                                            "./static/overlay.html",
+                                            "../../static/overlay.html",
+                                            "resources/static/overlay.html",  // For MSI installed version
+                                            "C:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "C:\\Program Files\\Win Count by ArtYWoof\\static\\overlay.html",
+                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\static\\overlay.html",
+                                            "C:\\Program Files\\Win Count by ArtYWoof\\_up_\\static\\overlay.html",
+                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\_up_\\static\\overlay.html",
+                                            "C:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "D:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "D:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "D:\\Program Files\\Win Count by ArtYWoof\\static\\overlay.html",
+                                            "D:\\Program Files (x86)\\Win Count by ArtYWoof\\static\\overlay.html",
+                                            "E:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "E:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "E:\\Program Files\\Win Count by ArtYWoof\\static\\overlay.html",
+                                            "E:\\Program Files (x86)\\Win Count by ArtYWoof\\static\\overlay.html",
+                                            "F:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "F:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
+                                            "F:\\Program Files\\Win Count by ArtYWoof\\static\\overlay.html",
+                                            "F:\\Program Files (x86)\\Win Count by ArtYWoof\\static\\overlay.html",
+                                            // Add paths for executable directory
+                                            "C:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
+                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
+                                            "D:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
+                                            "D:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
+                                            "E:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
+                                            "E:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
+                                            "F:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
+                                            "F:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html"
+                                        ];
+                                        
+                                        println!("🔍 Searching for overlay.html in paths:");
+                                        for path in &overlay_paths {
+                                            println!("   📂 {}", path);
+                                        }
+                                        
+                                        let mut overlay_content = None;
+                                        for path in overlay_paths {
+                                            match std::fs::read_to_string(&path) {
                                             Ok(content) => {
+                                                    println!("✅ Found overlay.html at: {}", path);
+                                                    println!("   📏 File size: {} bytes", content.len());
+                                                    overlay_content = Some(content);
+                                                    break;
+                                                }
+                                                Err(e) => {
+                                                    println!("❌ Failed to read overlay.html from {}: {}", path, e);
+                                                }
+                                            }
+                                        }
+                                        
+                                        match overlay_content {
+                                            Some(content) => {
                                                 let response = format!(
                                                     "HTTP/1.1 200 OK\r\n\
                                                     Content-Type: text/html; charset=utf-8\r\n\
@@ -786,8 +1450,8 @@ fn start_http_server() {
                                                     println!("❌ Failed to send HTTP response: {}", e);
                                                 }
                                             }
-                                            Err(e) => {
-                                                println!("❌ Failed to read overlay.html: {}", e);
+                                            None => {
+                                                println!("❌ Failed to read overlay.html from any path");
                                                 let response = "HTTP/1.1 404 Not Found\r\n\r\n404 - File not found";
                                                 let _ = stream.write_all(response.as_bytes()).await;
                                             }
@@ -797,12 +1461,70 @@ fn start_http_server() {
                                         let path_start = request.find("GET ").unwrap() + 4;
                                         let path_end = request.find(" HTTP").unwrap();
                                         let asset_path = &request[path_start..path_end];
-                                        let file_path = format!("../static{}", asset_path);
                                         
-                                        println!("📁 Serving asset: {}", file_path);
+                                        // Try multiple paths for assets
+                                        let asset_paths = vec![
+                                            format!("../static{}", asset_path),
+                                            format!("static{}", asset_path),
+                                            format!("./static{}", asset_path),
+                                            format!("../../static{}", asset_path),
+                                            format!("resources/static{}", asset_path),  // For MSI installed version
+                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\static{}", asset_path),
+                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\static{}", asset_path),
+                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\_up_\\static{}", asset_path),
+                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\_up_\\static{}", asset_path),
+                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("D:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("D:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("D:\\Program Files\\Win Count by ArtYWoof\\static{}", asset_path),
+                                            format!("D:\\Program Files (x86)\\Win Count by ArtYWoof\\static{}", asset_path),
+                                            format!("E:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("E:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("E:\\Program Files\\Win Count by ArtYWoof\\static{}", asset_path),
+                                            format!("E:\\Program Files (x86)\\Win Count by ArtYWoof\\static{}", asset_path),
+                                            format!("F:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("F:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
+                                            format!("F:\\Program Files\\Win Count by ArtYWoof\\static{}", asset_path),
+                                            format!("F:\\Program Files (x86)\\Win Count by ArtYWoof\\static{}", asset_path),
+                                            // Add paths for executable directory
+                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
+                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
+                                            format!("D:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
+                                            format!("D:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
+                                            format!("E:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
+                                            format!("E:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
+                                            format!("F:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
+                                            format!("F:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path)
+                                        ];
                                         
-                                        match std::fs::read(&file_path) {
+                                        println!("🔍 Searching for asset '{}' in paths:", asset_path);
+                                        for path in &asset_paths {
+                                            println!("   📂 {}", path);
+                                        }
+                                        
+                                        let mut asset_content = None;
+                                        let mut found_path = String::new();
+                                        
+                                        for path in asset_paths {
+                                            match std::fs::read(&path) {
                                             Ok(content) => {
+                                                    println!("✅ Found asset at: {}", path);
+                                                    println!("   📏 File size: {} bytes", content.len());
+                                                    asset_content = Some(content);
+                                                    found_path = path;
+                                                    break;
+                                                }
+                                                Err(e) => {
+                                                    println!("❌ Failed to read asset from {}: {}", path, e);
+                                                }
+                                            }
+                                        }
+                                        
+                                        match asset_content {
+                                            Some(content) => {
                                                 let content_type = if asset_path.ends_with(".png") {
                                                     "image/png"
                                                 } else if asset_path.ends_with(".jpg") || asset_path.ends_with(".jpeg") {
@@ -840,8 +1562,8 @@ fn start_http_server() {
                                                     println!("❌ Failed to send HTTP response body: {}", e);
                                                 }
                                             }
-                                            Err(e) => {
-                                                println!("❌ Failed to read asset {}: {}", file_path, e);
+                                            None => {
+                                                println!("❌ Failed to read asset from any path: {}", asset_path);
                                                 let response = "HTTP/1.1 404 Not Found\r\n\r\n404 - Asset not found";
                                                 let _ = stream.write_all(response.as_bytes()).await;
                                             }
@@ -889,7 +1611,7 @@ fn start_ws_server(shared_state: Arc<Mutex<WinState>>, broadcast_tx: broadcast::
                             match accept_async(stream).await {
                                 Ok(ws_stream) => {
                                     let (mut ws_write, mut ws_read) = ws_stream.split();
-                                    let mut rx = broadcast_tx_clone.subscribe();
+                                    let _rx = broadcast_tx_clone.subscribe();
                                     
                                     // ส่ง state ปัจจุบันจาก shared_state ให้ overlay ทุกครั้งที่เชื่อมต่อใหม่
                                     let current_state = {
@@ -921,7 +1643,7 @@ fn start_ws_server(shared_state: Arc<Mutex<WinState>>, broadcast_tx: broadcast::
                                     });
                                     
                                     // สร้าง receiver ใหม่สำหรับ read task
-                                    let mut rx_read = broadcast_tx_clone.subscribe();
+                                    let _rx_read = broadcast_tx_clone.subscribe();
                                     
                                     // Task to handle incoming messages and keepalive
                                     let read_task = tokio::spawn(async move {
@@ -1067,122 +1789,91 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds])
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();
+            let _key_tracker = key_tracker.clone();
+            
             move |app| {
                 let app_handle: Arc<tauri::AppHandle> = Arc::new(app.handle().clone());
                 let state: SharedWinState = Arc::clone(&shared_state);
                 let gs = app_handle.global_shortcut();
+                let gs_manager_state: GlobalShortcutManager = Arc::new(Mutex::new(Some(app.handle().clone())));
+                
+                // Register the global shortcut manager with the app
+                app.manage(gs_manager_state.clone());
                 
                 println!("🎮 Registering dynamic global shortcuts...");
                 
-                // Unregister any existing shortcuts first (in case of restart)
-                let _ = gs.unregister_all();
-                println!("🧹 Cleared any existing shortcuts for dynamic system");
+                // Use the dynamic registration function instead of duplicating logic
+                match register_hotkeys_dynamically(&app_handle, &state, &broadcast_tx) {
+                    Ok(_) => {
+                        println!("✅ Dynamic hotkeys registered successfully in setup");
+                    },
+                            Err(e) => {
+                        println!("❌ Failed to register dynamic hotkeys in setup: {}", e);
+                        // Fallback to default hotkeys
+                    let default_hotkeys = vec![
+                        ("Alt+Equal".to_string(), "increment".to_string()),
+                        ("Alt+Minus".to_string(), "decrement".to_string()),
+                        ("Shift+Alt+Equal".to_string(), "increment10".to_string()),
+                        ("Shift+Alt+Minus".to_string(), "decrement10".to_string())
+                    ];
+                        
+                        let mut tauri_hotkeys = Vec::new();
+                        let mut hotkey_mapping = std::collections::HashMap::new();
+                    
+                    for (hotkey, action) in default_hotkeys {
+                        if let Ok(shortcut) = hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>() {
+                            tauri_hotkeys.push(shortcut.clone());
+                            hotkey_mapping.insert(shortcut.to_string(), action.clone());
+                                println!("🎹 Prepared fallback hotkey: {} -> {}", action, hotkey);
+                    }
+                }
                 
-                match gs.on_shortcuts(["Alt+Equal", "Alt+Minus", "Shift+Alt+Equal", "Shift+Alt+Minus"], {
-                    let app_handle: Arc<tauri::AppHandle> = Arc::clone(&app_handle);
-                    let state: SharedWinState = Arc::clone(&state);
+                        // Register fallback hotkeys
+                match gs.on_shortcuts(tauri_hotkeys.clone(), {
+                            let app_handle = app_handle.clone();
+                            let state = state.clone();
                     let broadcast_tx = broadcast_tx.clone();
-                    let key_tracker = key_tracker.clone();
                     move |_app, shortcut, _event| {
-                        // 🎯 ULTRA STRICT: MANDATORY Edge-detection - ONLY transitions allowed
-                        // ZERO tolerance for non-transitions
-                        
-                        let handle: Arc<tauri::AppHandle> = Arc::clone(&app_handle);
-                        let win_state: SharedWinState = Arc::clone(&state);
-                        let broadcast_tx = broadcast_tx.clone();
-                        let key_tracker = key_tracker.clone();
                         let shortcut_str = shortcut.to_string();
-                        
                         println!("🔥 RAW EVENT: '{}' at {:?}", shortcut_str, std::time::SystemTime::now());
                         
-                        // ZERO TOLERANCE: Only TRUE edge transitions allowed
-                        let step = {
-                            let mut trackers = key_tracker.lock().unwrap();
-                            let tracker = trackers.entry(shortcut_str.clone()).or_insert_with(KeyEventTracker::default);
+                        if let Some(action) = hotkey_mapping.get(&shortcut_str) {
+                            println!("🎯 Hotkey '{}' matches action: {}", shortcut_str, action);
                             
-                            let current_time = Instant::now();
-                            let time_since_last_execution = tracker.last_execution_time.elapsed();
-                            
-                            // Get current physical key states based on shortcut type
-                            let (alt_pressed, target_key_pressed, current_combo_state) = if shortcut_str.contains("Equal") {
-                                let (alt, equal) = are_hotkeys_alt_equal_pressed();
-                                (alt, equal, alt && equal)
-                            } else if shortcut_str.contains("Minus") {
-                                let (alt, minus) = are_hotkeys_alt_minus_pressed();
-                                (alt, minus, alt && minus)
-                            } else {
-                                (false, false, false)
-                            };
-                            
-                            println!("🔍 STATE CHECK: Alt={}, TargetKey={}, Combo={}, LastState={}, Shortcut={}", 
-                                alt_pressed, target_key_pressed, current_combo_state, tracker.last_key_state, shortcut_str);
-                            
-                            // RULE 1: Keys must be physically pressed
-                            if !current_combo_state {
-                                tracker.last_key_state = false;
-                                println!("🚫 REJECT: Keys not physically pressed");
-                                return;
+                            match action.as_str() {
+                                "increment" => {
+                                    println!("⬆️ increase_win (+1) - single press count");
+                                            change_win(&app_handle, &state, &broadcast_tx, 1);
+                                }
+                                "decrement" => {
+                                    println!("⬇️ decrease_win (-1) - single press count");
+                                            change_win(&app_handle, &state, &broadcast_tx, -1);
+                                }
+                                "increment10" => {
+                                    println!("⬆️⬆️ big increase_win (+10) - single press count");
+                                            change_win_with_step(&app_handle, &state, &broadcast_tx, 1, 10);
+                                }
+                                "decrement10" => {
+                                    println!("⬇️⬇️ big decrease_win (-10) - single press count");
+                                            change_win_with_step(&app_handle, &state, &broadcast_tx, -1, 10);
+                                }
+                                _ => {
+                                    println!("❓ Unknown action: {}", action);
+                                }
                             }
-                            
-                            // RULE 2: MANDATORY edge transition - was NOT pressed before, NOW pressed
-                            if tracker.last_key_state {
-                                println!("🚫 REJECT: Keys already pressed - NO EDGE TRANSITION");
-                                return;
-                            }
-                            
-                            // RULE 3: Anti-double-press protection - MINIMUM 100ms between counts
-                            if time_since_last_execution < Duration::from_millis(100) {
-                                println!("🚫 REJECT: Too rapid ({:?}ms < 100ms)", 
-                                    time_since_last_execution.as_millis());
-                                return;
-                            }
-                            
-                            // ✅ VALID EDGE TRANSITION: not pressed -> pressed
-                            tracker.last_key_state = true;
-                            
-                            // Update tracking for valid transitions only
-                            tracker.press_count += 1;
-                            tracker.equal_presses += 1;
-                            tracker.last_press_time = current_time;
-                            tracker.last_execution_time = current_time;
-                            
-                            // ALWAYS step = 1: one press = +1 exactly
-                            println!("✅ ACCEPTED: Alt+{}, Press #{}, Step: 1 (gap: {:?}ms, EDGE TRANSITION)", 
-                                if shortcut_str.contains("Equal") { "=" } else { "-" },
-                                tracker.equal_presses,
-                                time_since_last_execution.as_millis());
-                            1
-                        };
-                        
-                        match shortcut_str.as_str() {
-                            "Alt+Equal" | "alt+Equal" | "ALT+EQUAL" => {
-                                println!("⬆️ increase_win (+1) - single press count");
-                                change_win(&handle, &win_state, &broadcast_tx, 1);
-                            }
-                            "Alt+Minus" | "alt+Minus" | "ALT+MINUS" => {
-                                println!("⬇️ decrease_win (-1) - single press count");
-                                change_win(&handle, &win_state, &broadcast_tx, -1);
-                            }
-                            "Shift+Alt+Equal" | "shift+alt+Equal" | "SHIFT+ALT+EQUAL" => {
-                                println!("⬆️⬆️ big increase_win (+10) - single press count");
-                                change_win_with_step(&handle, &win_state, &broadcast_tx, 1, 10);
-                            }
-                            "Shift+Alt+Minus" | "shift+alt+Minus" | "SHIFT+ALT+MINUS" => {
-                                println!("⬇️⬇️ big decrease_win (-10) - single press count");
-                                change_win_with_step(&handle, &win_state, &broadcast_tx, -1, 10);
-                            }
-                            _ => {
-                                println!("❓ Unknown hotkey format: '{}'", shortcut_str);
-                            }
+                        } else {
+                            println!("❓ No action found for hotkey: {}", shortcut_str);
                         }
                     }
                 }) {
-                    Ok(_) => println!("✅ Dynamic global shortcuts registered successfully"),
-                    Err(e) => println!("❌ Failed to register dynamic global shortcuts: {:?}", e),
+                            Ok(_) => println!("✅ Fallback hotkeys registered successfully"),
+                            Err(e) => println!("❌ Failed to register fallback hotkeys: {:?}", e),
+                        }
+                    }
                 }
                 
                 // Setup System Tray

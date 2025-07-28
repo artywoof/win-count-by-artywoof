@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Win Count by ArtYWoof",
+  "productName": "Win_Count_by_ArtYWoof",
   "version": "1.0.0",
   "identifier": "com.artywoof.wincount",
   "build": {
@@ -43,17 +43,20 @@
       "iconAsTemplate": false
     },
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": [
+        "default"
+      ]
     }
   },
   "plugins": {
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/artywoof/win-count-by-artywoof/releases/latest/download/latest.json"
+        "https://github.com/artywoof/win-count-by-artywoof/releases/download/Win_Count_v.1.0/latest.json"
       ],
       "dialog": true,
-      "pubkey": "YOUR_PUBLIC_KEY_HERE"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ1NUQzQjdBNUMyRTRGRjUKUldUMVR5NWNlanRkMWRaaXUyS0JqNGJYakdxSUpTUzkyTUFQdEdrc0JkbWZObFUweEp5Y1BxakwK"
     },
     "globalShortcut": {
       "shortcuts": []
@@ -61,13 +64,16 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png",
       "icons/icon.ico"
+    ],
+    "resources": [
+      "../static"
     ]
   }
 }

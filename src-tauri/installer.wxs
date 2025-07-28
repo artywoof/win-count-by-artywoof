@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" 
+           Name="Win Count by ArtYWoof" 
+           Language="1033" 
+           Version="1.0.0" 
+           Manufacturer="ArtYWoof" 
+           UpgradeCode="b51bebc8-abcb-40e3-9301-0ea2f3882d27">
+    
+    <Package InstallerVersion="200" 
+             Compressed="yes" 
+             InstallScope="perMachine"
+             Manufacturer="ArtYWoof"
+             Description="Win Count by ArtYWoof - Desktop Application"
+             Comments="Win Count by ArtYWoof Desktop Application" />
+
+    <!-- Application Icon -->
+    <Icon Id="icon.ico" SourceFile="icons/icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="icon.ico" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Allow user to choose installation directory -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <UIRef Id="WixUI_InstallDir" />
+
+    <!-- Set default installation directory -->
+    <Property Id="INSTALLFOLDER" Value="[ProgramFilesFolder]Win Count by ArtYWoof" />
+
+    <!-- Create installation directory -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="Win Count by ArtYWoof">
+          <!-- Application files will be installed here -->
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <!-- Create Start Menu folder -->
+    <Directory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Win Count by ArtYWoof">
+        <Component Id="ApplicationShortcut" Guid="*">
+          <Shortcut Id="ApplicationStartMenuShortcut" 
+                    Name="Win Count by ArtYWoof" 
+                    Description="Win Count by ArtYWoof Desktop Application"
+                    Target="[INSTALLFOLDER]win-count-by-artywoof.exe"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="icon.ico"
+                    IconIndex="0" />
+          <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue Root="HKCU" Key="Software\Win Count by ArtYWoof" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </Directory>
+
+    <!-- Create Desktop shortcut -->
+    <Directory Id="DesktopFolder" Name="Desktop">
+      <Component Id="DesktopShortcut" Guid="*">
+        <Shortcut Id="ApplicationDesktopShortcut" 
+                  Name="Win Count by ArtYWoof" 
+                  Description="Win Count by ArtYWoof Desktop Application"
+                  Target="[INSTALLFOLDER]win-count-by-artywoof.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="icon.ico"
+                  IconIndex="0" />
+        <RemoveFolder Id="DesktopShortcut" Directory="DesktopFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\Win Count by ArtYWoof" Name="desktop_shortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </Directory>
+
+    <!-- Feature for the application -->
+    <Feature Id="ProductFeature" Title="Win Count by ArtYWoof" Level="1">
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <!-- Application files will be added here automatically -->
+    </Feature>
+
+    <!-- Custom actions for post-installation -->
+    <CustomAction Id="CreateAppDataFolder" 
+                  Directory="INSTALLFOLDER" 
+                  ExeCommand="cmd.exe /c mkdir &quot;[INSTALLFOLDER]\static&quot; 2&gt;nul" 
+                  Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="CreateAppDataFolder" After="InstallFiles">NOT Installed</Custom>
+    </InstallExecuteSequence>
+
+  </Product>
+</Wix> 

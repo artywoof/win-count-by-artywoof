@@ -4,7 +4,7 @@
   import { browser } from '$app/environment';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { invoke } from '@tauri-apps/api/core';
-  import autoUpdater from '$lib/autoUpdater';
+
   import licenseManager from '$lib/licenseManager';
 
   // State stores - these will be updated by Tauri events
@@ -27,7 +27,8 @@
   let showSettingsModal = false;
   let showPresetModal = false;
   let showCopyModal = false;
-  let settingsTab = 'hotkey'; // 'hotkey' or 'sound'
+  let showResetConfirmModal = false;
+  let settingsTab = 'general'; // 'general', 'hotkey', or 'sound'
   
   // Preset editing state
   let editingPreset: string | null = null;
@@ -47,9 +48,7 @@
   let audioUpCustom: HTMLAudioElement | null = null;
   let audioDownCustom: HTMLAudioElement | null = null;
   
-  // Hotkey recording state
-  let recordingHotkey: string | null = null;
-  let recordingTimeout: number | null = null;
+
 
   // Number editing state
   let editingWin = false;
@@ -82,6 +81,120 @@
   // Upload message state
   let uploadMessage = '';
   
+  // Settings state
+  let recordingHotkey: string | null = null;
+  let recordingTimeout: number | null = null;
+
+  // Settings functions
+  function startHotkeyRecording(action: string) {
+    recordingHotkey = action;
+    console.log(`🎹 Recording hotkey for ${action}...`);
+    
+    // Clear any existing timeout
+    if (recordingTimeout) {
+      clearTimeout(recordingTimeout);
+    }
+    
+    // Set timeout to stop recording after 5 seconds
+    recordingTimeout = setTimeout(() => {
+      stopHotkeyRecording();
+    }, 5000);
+  }
+
+
+
+  // Reset hotkeys to defaults
+  async function resetHotkeys() {
+    console.log('🔄 RESET HOTKEYS BUTTON CLICKED!');
+    
+    try {
+      // 1. สั่งให้ Backend ล้างไฟล์ Hotkey เก่าทิ้ง
+      await invoke('clear_hotkeys');
+      console.log('✅ Backend hotkeys file cleared.');
+      
+      // 2. รีเซ็ตค่าใน Frontend
+      customHotkeys = {
+        increment: 'Alt+=',
+        decrement: 'Alt+-',
+        increment10: 'Alt+Shift+=',
+        decrement10: 'Alt+Shift+-'
+      };
+      console.log('✅ Frontend settings reset.');
+
+      // 3. บันทึกค่าเริ่มต้นที่ถูกต้องลงในไฟล์ backend
+      console.log('💾 Saving default hotkeys to backend...');
+      await invoke('save_default_hotkeys');
+      console.log('✅ Default hotkeys saved to backend');
+      
+      // 4. Reload hotkeys ใน backend
+      try {
+        await invoke('reload_hotkeys_command');
+        console.log('✅ Backend hotkeys reloaded with defaults');
+      } catch (error) {
+        console.error('❌ Failed to reload backend hotkeys:', error);
+      }
+      
+      console.log('✅ Reset completed successfully');
+      
+    } catch (error) {
+      console.error('❌ Failed to reset hotkeys:', error);
+    }
+  }
+  
+  function stopHotkeyRecording() {
+    recordingHotkey = null;
+    if (recordingTimeout) {
+      clearTimeout(recordingTimeout);
+      recordingTimeout = null;
+    }
+    console.log('🎹 Stopped hotkey recording');
+  }
+  
+  async function updateHotkey(action: string, newKey: string) {
+    customHotkeys[action] = newKey;
+    
+    // Save to localStorage
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('customHotkeys', JSON.stringify(customHotkeys));
+    }
+    
+    // Send to Tauri backend
+    try {
+      await invoke('update_hotkey', { action, hotkey: newKey });
+      console.log(`🎹 Updated hotkey for ${action}: ${newKey} (saved to backend)`);
+      
+      // Reload hotkeys from backend to apply changes immediately
+      await invoke('reload_hotkeys_command');
+      console.log(`✅ Hotkeys reloaded for ${action}: ${newKey}`);
+      
+      // Show notification to user (optional - can be removed if not needed)
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          new Notification('Win Count', {
+            body: `Hotkey updated: ${action} -> ${newKey}\nHotkey is now active - no restart needed!`,
+            icon: '/assets/ui/app_icon.png'
+          });
+        }
+      }
+      
+      // Log success (no alert to avoid interruption)
+      console.log(`✅ Hotkey updated: ${action} -> ${newKey} - Hotkey is now active`);
+      
+    } catch (error) {
+      console.error(`❌ Failed to update hotkey for ${action}:`, error);
+      alert(`❌ Failed to update hotkey: ${error}`);
+    }
+  }
+  
+  function handleSoundUpload(event: Event, type: 'increase' | 'decrease') {
+    const target = event.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (file) {
+      console.log(`🔊 Sound upload: ${type} - ${file.name}`);
+      // Here you would normally save the file
+    }
+  }
+  
   // License state
   let showLicenseModal = false;
   let isLicenseValid = false;
@@ -104,20 +217,35 @@
       // Only log if license is valid, otherwise it's expected behavior
       if (isLicenseValid) {
         console.log('🔑 License status:', licenseStatusMessage);
-      } else {
-        console.log('🔑 License not activated yet - this is normal for first-time users');
-      }
-      
-      if (isLicenseValid) {
         isAppReady = true; // อนุญาตให้แสดงแอพหลัก
       } else {
-        showLicenseModal = true; // แสดง Modal ให้กรอก License
+        console.log('🔑 License not activated yet - this is normal for first-time users');
+        
+        // Check if this is the first time (no license file exists)
+        try {
+          const existingLicense = await invoke('get_license_key');
+          if (!existingLicense) {
+            // First time user - show license modal
+            showLicenseModal = true;
+          } else {
+            // License exists but invalid - allow app to run anyway
+            console.log('🔑 License exists but invalid - allowing app to run');
+            isAppReady = true;
+          }
+        } catch (error) {
+          // No license file - first time user
+          console.log('🔑 No license file found - first time user');
+          showLicenseModal = true;
+        }
       }
     } catch (error) {
       console.warn('⚠️ License check failed (this is normal for first-time users):', error);
       isLicenseValid = false;
       licenseStatusMessage = 'ยังไม่ได้เปิดใช้งาน License';
-      showLicenseModal = true; // แสดง Modal ให้กรอก License
+      
+      // Allow app to run even if license check fails
+      console.log('🔑 License check failed - allowing app to run anyway');
+      isAppReady = true;
     }
   }
   
@@ -127,14 +255,14 @@
   }
   
   function closeLicenseModal() {
-    // อนุญาตให้ปิด Modal เฉพาะเมื่อ License ถูกต้องแล้ว
-    if (isLicenseValid) {
-      showLicenseModal = false;
-      // Reset form
-      licenseKeyInput = '';
-      licenseError = '';
-      licenseSuccess = '';
-    }
+    // อนุญาตให้ปิด Modal ได้เสมอ และให้แอพทำงานได้
+    showLicenseModal = false;
+    isAppReady = true; // อนุญาตให้แสดงแอพหลัก
+    
+    // Reset form
+    licenseKeyInput = '';
+    licenseError = '';
+    licenseSuccess = '';
   }
 
   // ฟังก์ชันจัดการ License Key formatting
@@ -518,36 +646,62 @@
     }
   }
 
-  // Auto Update functions
+  // Auto Update functions using Tauri invoke
   async function checkForUpdates() {
     if (isCheckingUpdate) return;
     
     isCheckingUpdate = true;
+    console.log('🔄 Starting update check...');
+    
     try {
-      const result = await autoUpdater.checkForUpdates();
-      hasUpdate = result.hasUpdate;
-      updateInfo = result.updateInfo;
+      // Try to use Tauri's built-in updater
+      console.log('📡 Invoking Tauri updater...');
+      await invoke('tauri', { cmd: 'updater', action: 'check' });
       
-      if (hasUpdate && updateInfo) {
-        console.log('🔄 Update available:', updateInfo.version);
-      } else {
-        console.log('✅ No updates available');
-      }
+      console.log('✅ Update check completed successfully');
+      showNotification('✅ ตรวจสอบอัปเดตเสร็จสิ้น');
     } catch (error) {
-      console.error('❌ Failed to check for updates:', error);
+      console.error('❌ Tauri updater failed:', error);
+      
+      // Fallback: show manual update message
+      showNotification('ℹ️ กรุณาตรวจสอบอัปเดตที่ GitHub Releases');
+      
+      // Open GitHub releases page
+      try {
+        window.open('https://github.com/artywoof/win-count-by-artywoof/releases', '_blank');
+      } catch (openError) {
+        console.error('❌ Failed to open GitHub releases:', openError);
+      }
     } finally {
       isCheckingUpdate = false;
     }
   }
 
   async function downloadUpdate() {
-    if (!updateInfo?.downloadUrl) return;
+    if (!hasUpdate) return;
     
     try {
-      window.open(updateInfo.downloadUrl, '_blank');
-      console.log('📥 Opening download link:', updateInfo.downloadUrl);
+      console.log('📥 Installing update...');
+      showNotification('กำลังดาวน์โหลดอัปเดต...');
+      
+      // Use Tauri's built-in updater
+      await invoke('tauri', { cmd: 'updater', action: 'install' });
+      
+      console.log('✅ Update installation initiated');
+      showNotification('การติดตั้งอัปเดตเริ่มต้นแล้ว');
     } catch (error) {
-      console.error('❌ Failed to open download link:', error);
+      console.error('❌ Failed to install update:', error);
+      showNotification('❌ เกิดข้อผิดพลาดในการติดตั้งอัปเดต');
+    }
+  }
+
+  async function restartAndInstall() {
+    try {
+      console.log('🔄 Restarting app...');
+      await invoke('tauri', { cmd: 'relaunch' });
+    } catch (error) {
+      console.error('❌ Failed to restart:', error);
+      showNotification('❌ เกิดข้อผิดพลาดในการรีสตาร์ท');
     }
   }
 
@@ -558,10 +712,64 @@
 
   // Show notification function
   function showNotification(message: string, duration: number = 3000) {
-    // Use existing copy modal for notifications
-    showCopyModal = true;
+    // Create custom notification instead of using copy modal
+    const notification = document.createElement('div');
+    notification.className = 'custom-notification';
+    notification.innerHTML = `
+      <div class="notification-content">
+        <span>${message}</span>
+      </div>
+    `;
+    
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+      .custom-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+        border: 1px solid #007AFF;
+        border-radius: 12px;
+        padding: 15px 20px;
+        color: white;
+        font-size: 14px;
+        font-weight: 500;
+        z-index: 10000;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        animation: slideInRight 0.3s ease-out;
+      }
+      
+      .notification-content {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      
+      @keyframes slideInRight {
+        from {
+          opacity: 0;
+          transform: translateX(100%);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+    `;
+    
+    // Add to document
+    document.head.appendChild(style);
+    document.body.appendChild(notification);
+    
+    // Auto-remove after duration
     setTimeout(() => {
-      showCopyModal = false;
+      if (notification.parentElement) {
+        notification.remove();
+      }
+      if (style.parentElement) {
+        style.remove();
+      }
     }, duration);
   }
 
@@ -592,65 +800,11 @@
     await copyOverlayLink();
   }
 
-  // Settings functions
-  function startHotkeyRecording(action: string) {
-    recordingHotkey = action;
-    console.log(`🎹 Recording hotkey for ${action}...`);
-    
-    // Clear any existing timeout
-    if (recordingTimeout) {
-      clearTimeout(recordingTimeout);
-    }
-    
-    // Set timeout to stop recording after 5 seconds
-    recordingTimeout = setTimeout(() => {
-      stopHotkeyRecording();
-    }, 5000);
-  }
-  
-  function stopHotkeyRecording() {
-    recordingHotkey = null;
-    if (recordingTimeout) {
-      clearTimeout(recordingTimeout);
-      recordingTimeout = null;
-    }
-    console.log('🎹 Stopped hotkey recording');
-  }
-  
-  function updateHotkey(action: string, newKey: string) {
-    customHotkeys[action] = newKey;
-    // Here you would normally save to Tauri backend
-    console.log(`🎹 Updated hotkey for ${action}: ${newKey}`);
-  }
+
   
   function handleKeyPress(event: KeyboardEvent) {
     // Don't handle global keys if we're in a modal
     if (showSettingsModal || showPresetModal) {
-      return;
-    }
-    
-    // Handle hotkey recording
-    if (recordingHotkey) {
-      event.preventDefault();
-      event.stopPropagation();
-      
-      const keys: string[] = [];
-      
-      if (event.altKey) keys.push('Alt');
-      if (event.ctrlKey) keys.push('Ctrl');
-      if (event.shiftKey) keys.push('Shift');
-      if (event.metaKey) keys.push('Meta');
-      
-      // Add the main key
-      if (event.key !== 'Alt' && event.key !== 'Ctrl' && event.key !== 'Shift' && event.key !== 'Meta') {
-        keys.push(event.key.toUpperCase());
-      }
-      
-      if (keys.length > 0) {
-        const newHotkey = keys.join('+');
-        updateHotkey(recordingHotkey, newHotkey);
-        stopHotkeyRecording();
-      }
       return;
     }
 
@@ -979,31 +1133,6 @@
     console.log('🔊 Sound settings reset to defaults');
   }
 
-  async function handleSoundUpload(event: Event, type: 'increase' | 'decrease') {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('audio/')) {
-      alert('กรุณาเลือกไฟล์เสียง (MP3 หรือ WAV) เท่านั้น');
-      return;
-    }
-
-    try {
-      const url = URL.createObjectURL(file);
-      if (type === 'increase') {
-        customIncreaseSound = url;
-        audioUpCustom = new Audio(url);
-      } else {
-        customDecreaseSound = url;
-        audioDownCustom = new Audio(url);
-      }
-      console.log(`🔊 Custom ${type} sound uploaded: ${file.name}`);
-    } catch (err) {
-      console.error(`❌ Failed to upload ${type} sound:`, err);
-      alert('เกิดข้อผิดพลาดในการอัพโหลดไฟล์เสียง');
-    }
-  }
-
   function playCustomIncreaseSound() {
     if (soundEnabled && audioUpCustom) {
       audioUpCustom.currentTime = 0;
@@ -1047,14 +1176,14 @@
 
       // สร้าง PresetData จากสเตทปัจจุบัน
       const presetData = {
-        name: presetName,
-        win: $win,
-        goal: $goal,
-        show_goal: $showGoal,
-        show_crown: $showCrown,
-        hotkeys: {
-          increase: customHotkeys.increment,
-          decrease: customHotkeys.decrement,
+          name: presetName,
+          win: $win,
+          goal: $goal,
+          show_goal: $showGoal,
+          show_crown: $showCrown,
+          hotkeys: {
+            increase: customHotkeys.increment,
+            decrease: customHotkeys.decrement,
           step_size: 1
         }
       };
@@ -1083,6 +1212,18 @@
       showCrown.set(presetData.show_crown !== false);
       showGoal.set(presetData.show_goal !== false);
       currentPreset.set(presetName);
+      
+      // Sync hotkeys with preset
+      if (presetData.hotkeys) {
+        console.log('🎹 Syncing hotkeys with preset:', presetData.hotkeys);
+        customHotkeys = {
+          increment: presetData.hotkeys.increase || 'Alt+=',
+          decrement: presetData.hotkeys.decrease || 'Alt+-',
+          increment10: `Shift+${presetData.hotkeys.increase || 'Alt+='}`,
+          decrement10: `Shift+${presetData.hotkeys.decrease || 'Alt+-'}`
+        };
+        console.log('✅ Hotkeys synced with preset:', customHotkeys);
+      }
       
       console.log(`✅ Loaded preset: ${presetName}`);
     } catch (err) {
@@ -1120,9 +1261,71 @@
     }
   }
 
+  // Global keydown handler for hotkey recording
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    if (recordingHotkey) {
+      event.preventDefault();
+      event.stopPropagation();
+      
+      const mods = [];
+      if (event.ctrlKey) mods.push('Ctrl');
+      if (event.altKey) mods.push('Alt');
+      if (event.shiftKey) mods.push('Shift');
+      if (event.metaKey) mods.push('Meta');
+      
+      const key = event.key === ' ' ? 'Space' : event.key;
+      const hotkey = [...mods, key].join('+');
+      
+      console.log(`🎹 Recording hotkey: ${recordingHotkey} Event: ${hotkey}`);
+      updateHotkey(recordingHotkey, hotkey);
+      stopHotkeyRecording();
+    }
+  }
+
   // Initialize everything on mount
   onMount(async () => {
-    console.log('✅ App initializing...');
+    console.log('🚀 App initializing...');
+    
+    // Load custom hotkeys from localStorage
+    if (typeof localStorage !== 'undefined') {
+      const savedHotkeys = localStorage.getItem('customHotkeys');
+      if (savedHotkeys) {
+        try {
+          const parsed = JSON.parse(savedHotkeys);
+          customHotkeys = { ...customHotkeys, ...parsed };
+          console.log('🎹 Loaded custom hotkeys from localStorage:', customHotkeys);
+        } catch (error) {
+          console.warn('⚠️ Failed to load custom hotkeys:', error);
+        }
+      }
+    }
+    
+    // Sync hotkeys with backend on app start
+    console.log('🔄 Syncing hotkeys with backend on app start...');
+    try {
+      const testResult = await invoke('test_hotkeys') as string;
+      console.log('🧪 Backend hotkeys on app start:', testResult);
+      
+      // Parse the hotkeys from the test result and update frontend
+      if (testResult.includes('Hotkeys loaded:')) {
+        const hotkeysMatch = testResult.match(/Hotkeys loaded: \{([^}]+)\}/);
+        if (hotkeysMatch) {
+          const hotkeysStr = hotkeysMatch[1];
+          console.log('🎹 Parsed hotkeys string on app start:', hotkeysStr);
+          
+          // Update frontend customHotkeys to match backend
+          // This ensures the UI shows the correct hotkeys
+          const backendHotkeys = JSON.parse(`{${hotkeysStr}}`);
+          customHotkeys = { ...customHotkeys, ...backendHotkeys };
+          console.log('✅ Frontend hotkeys synced with backend on app start:', customHotkeys);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to sync hotkeys on app start:', error);
+    }
+    
+    // Add global keydown listener for hotkey recording
+    document.addEventListener('keydown', handleGlobalKeydown, true);
     
     // Initialize audio elements with correct paths for dev mode
     try {
@@ -1181,9 +1384,8 @@
     if (recordingTimeout) {
       clearTimeout(recordingTimeout);
     }
-    if (browser) {
-      document.removeEventListener('keydown', handleKeyPress, true);
-    }
+    // Remove global keydown listener
+    document.removeEventListener('keydown', handleGlobalKeydown, true);
   });
 
   // ... existing code ...
@@ -1509,7 +1711,7 @@
 
   <!-- Bottom Action Buttons -->
   <div class="bottom-actions" style="margin-top: -69px;">
-    <button class="action-btn secondary settings-btn" on:click={() => showSettingsModal = true}>
+    <button class="action-btn secondary copy-btn" on:click={() => showSettingsModal = true}>
       Setting
     </button>
     <button class="action-btn secondary copy-btn" on:click={copyLink}>
@@ -1518,189 +1720,213 @@
     
   </div>
 
-        <!-- Settings Modal -->
-      {#if showSettingsModal}
-        <div class="modal-backdrop" on:click={() => showSettingsModal = false} on:keydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="button" tabindex="0">
-          <div class="modal settings-modal" on:click|stopPropagation role="dialog" aria-labelledby="settings-title">
-            <div class="modal-header">
-              <h3 id="settings-title">⚙️ ตั้งค่า</h3>
-              <button class="modal-close" on:click={() => showSettingsModal = false}>×</button>
-            </div>
-            
-            <!-- Settings Tabs -->
-            <div class="settings-tabs">
-              <button 
-                class="settings-tab {settingsTab === 'hotkey' ? 'active' : ''}"
-                on:click={() => settingsTab = 'hotkey'}
-              >
-                ⌨️ ปุ่มลัด
-              </button>
-              <button 
-                class="settings-tab {settingsTab === 'sound' ? 'active' : ''}"
-                on:click={() => settingsTab = 'sound'}
-              >
-                🔊 เสียง
-              </button>
-            </div>
+  <!-- Settings Modal -->
+  {#if showSettingsModal}
+    <div class="modal-backdrop" on:click={() => showSettingsModal = false} on:keydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="button" tabindex="0">
+      <div class="modal settings-modal" on:click|stopPropagation role="dialog" aria-labelledby="settings-title">
+        <div class="modal-header">
+          <h3 id="settings-title">⚙️ ตั้งค่า</h3>
+          <button class="modal-close" on:click={() => showSettingsModal = false}>×</button>
+        </div>
+        
+        <!-- Settings Tabs -->
+        <div class="settings-tabs">
+          <button 
+            class="settings-tab {settingsTab === 'general' ? 'active' : ''}"
+            on:click={() => settingsTab = 'general'}
+          >
+            ⚙️ ทั่วไป
+          </button>
+          <button 
+            class="settings-tab {settingsTab === 'hotkey' ? 'active' : ''}"
+            on:click={() => settingsTab = 'hotkey'}
+          >
+            ⌨️ ปุ่มลัด
+          </button>
+          <button 
+            class="settings-tab {settingsTab === 'sound' ? 'active' : ''}"
+            on:click={() => settingsTab = 'sound'}
+          >
+            🔊 เสียง
+          </button>
+        </div>
 
-            <div class="modal-body">
-              {#if settingsTab === 'hotkey'}
-                <!-- Hotkey Customization -->
-              <div class="settings-group">
-                  <h4 class="settings-group-title">🎹 ปรับแต่งปุ่มลัด</h4>
-                  <p class="settings-note">
-                    คลิกที่ปุ่มลัดเพื่อเปลี่ยน (รองรับปุ่มใดๆ และการรวม 3 ปุ่ม)
-                  </p>
-                  
-                  <div class="hotkey-customization">
-                    <div class="hotkey-item">
-                      <span class="hotkey-label">เพิ่ม (+1):</span>
-                      <button 
-                        class="hotkey-input {recordingHotkey === 'increment' ? 'recording' : ''}"
-                        on:click={() => startHotkeyRecording('increment')}
-                      >
-                        {recordingHotkey === 'increment' ? 'กดปุ่ม...' : customHotkeys.increment}
-                      </button>
-                  </div>
-                    
-                    <div class="hotkey-item">
-                      <span class="hotkey-label">ลด (-1):</span>
-                      <button 
-                        class="hotkey-input {recordingHotkey === 'decrement' ? 'recording' : ''}"
-                        on:click={() => startHotkeyRecording('decrement')}
-                      >
-                        {recordingHotkey === 'decrement' ? 'กดปุ่ม...' : customHotkeys.decrement}
-                      </button>
-                  </div>
-                    
-                    <div class="hotkey-item">
-                      <span class="hotkey-label">เพิ่ม (+10):</span>
-                      <button 
-                        class="hotkey-input {recordingHotkey === 'increment10' ? 'recording' : ''}"
-                        on:click={() => startHotkeyRecording('increment10')}
-                      >
-                        {recordingHotkey === 'increment10' ? 'กดปุ่ม...' : customHotkeys.increment10}
-                      </button>
-                  </div>
-                    
-                    <div class="hotkey-item">
-                      <span class="hotkey-label">ลด (-10):</span>
-                      <button 
-                        class="hotkey-input {recordingHotkey === 'decrement10' ? 'recording' : ''}"
-                        on:click={() => startHotkeyRecording('decrement10')}
-                      >
-                        {recordingHotkey === 'decrement10' ? 'กดปุ่ม...' : customHotkeys.decrement10}
-                      </button>
-                  </div>
-              </div>
-
-                  <div class="settings-actions">
-                    <button class="settings-btn reset" on:click={() => {
-                      customHotkeys = {
-                        increment: 'Alt+=',
-                        decrement: 'Alt+-',
-                        increment10: 'Alt+Shift+=',
-                        decrement10: 'Alt+Shift+-'
-                      };
-                    }}>
-                      🔄 รีเซ็ตเป็นค่าเริ่มต้น
-                    </button>
-                    <button class="settings-btn update" on:click={checkForUpdates} disabled={isCheckingUpdate}>
-                      {isCheckingUpdate ? '🔄 กำลังตรวจสอบ...' : '🔄 ตรวจสอบอัปเดต'}
-                    </button>
-                  </div>
+        <div class="modal-body">
+          {#if settingsTab === 'general'}
+            <!-- General Settings -->
+            <div class="settings-group">
+              <h4 class="settings-group-title">⚙️ การตั้งค่าทั่วไป</h4>
+              
+              <!-- Auto Update Section -->
+              <div class="settings-section">
+                <h5 class="settings-section-title">🔄 อัปเดตอัตโนมัติ</h5>
+                <p class="settings-note">
+                  ตรวจสอบและติดตั้งอัปเดตใหม่อัตโนมัติ
+                </p>
+                
+                <div class="settings-actions">
+                  <button class="settings-btn update" on:click={checkForUpdates} disabled={isCheckingUpdate}>
+                    {isCheckingUpdate ? '🔄 กำลังตรวจสอบ...' : '🔄 ตรวจสอบอัปเดต'}
+                  </button>
                 </div>
-              {:else if settingsTab === 'sound'}
-                <!-- Sound Customization -->
-              <div class="settings-group">
-                  <h4 class="settings-group-title">🔊 ปรับแต่งเสียง</h4>
-                  
-                  <!-- Sound Toggle -->
-                  <div class="sound-toggle">
-                    <span class="sound-toggle-label">เปิด/ปิดเสียง:</span>
-                    <button 
-                      class="toggle-switch {soundEnabled ? 'active' : ''}"
-                      on:click={toggleSound}
-                      role="switch"
-                      aria-checked={soundEnabled}
-                    >
-                      <div class="toggle-knob"></div>
+              </div>
+              
+              <!-- App Information -->
+              <div class="settings-section">
+                <h5 class="settings-section-title">ℹ️ ข้อมูลแอป</h5>
+                <div class="app-info">
+                  <p><strong>เวอร์ชัน:</strong> 1.0.0</p>
+                  <p><strong>ผู้พัฒนา:</strong> ArtYWoof</p>
+                </div>
+              </div>
+            </div>
+          {:else if settingsTab === 'hotkey'}
+            <!-- Hotkey Customization -->
+          <div class="settings-group">
+              <h4 class="settings-group-title">🎹 ปรับแต่งปุ่มลัด</h4>
+              <p class="settings-note">
+                คลิกที่ปุ่มลัดเพื่อเปลี่ยน (รองรับปุ่มใดๆ และการรวม 3 ปุ่ม)
+              </p>
+              
+              <div class="hotkey-customization">
+                <div class="hotkey-item">
+                  <span class="hotkey-label">เพิ่ม (+1):</span>
+                  <button 
+                    class="hotkey-input {recordingHotkey === 'increment' ? 'recording' : ''}"
+                    on:click={() => startHotkeyRecording('increment')}
+                  >
+                    {recordingHotkey === 'increment' ? 'กดปุ่ม...' : customHotkeys.increment}
+                  </button>
+              </div>
+                
+                <div class="hotkey-item">
+                  <span class="hotkey-label">ลด (-1):</span>
+                  <button 
+                    class="hotkey-input {recordingHotkey === 'decrement' ? 'recording' : ''}"
+                    on:click={() => startHotkeyRecording('decrement')}
+                  >
+                    {recordingHotkey === 'decrement' ? 'กดปุ่ม...' : customHotkeys.decrement}
+                  </button>
+              </div>
+                
+                <div class="hotkey-item">
+                  <span class="hotkey-label">เพิ่ม (+10):</span>
+                  <button 
+                    class="hotkey-input {recordingHotkey === 'increment10' ? 'recording' : ''}"
+                    on:click={() => startHotkeyRecording('increment10')}
+                  >
+                    {recordingHotkey === 'increment10' ? 'กดปุ่ม...' : customHotkeys.increment10}
+                  </button>
+              </div>
+                
+                <div class="hotkey-item">
+                  <span class="hotkey-label">ลด (-10):</span>
+                  <button 
+                    class="hotkey-input {recordingHotkey === 'decrement10' ? 'recording' : ''}"
+                    on:click={() => startHotkeyRecording('decrement10')}
+                  >
+                    {recordingHotkey === 'decrement10' ? 'กดปุ่ม...' : customHotkeys.decrement10}
+                  </button>
+              </div>
+          </div>
+
+              <div class="settings-actions">
+                    <button class="settings-btn reset" on:click={() => showResetConfirmModal = true}>
+                      🔄 รีเซ็ตคืนค่า
                     </button>
-                  </div>
-                  
-                  <!-- Custom Sound Upload -->
-                  <div class="sound-upload-section">
-                    <h5 class="sound-section-title">📁 อัพโหลดเสียงใหม่</h5>
-                    
-                    <div class="sound-upload-item">
-                      <span class="sound-upload-label">เสียงเพิ่ม:</span>
-                      <input 
-                        type="file" 
-                        accept="audio/mp3,audio/wav"
-                        on:change={(e) => handleSoundUpload(e, 'increase')}
-                        class="sound-file-input"
-                        id="increase-sound-input"
-                      />
-                      <label for="increase-sound-input" class="sound-upload-btn">
-                        📂 เลือกไฟล์
-                      </label>
-                      {#if customIncreaseSound}
-                        <button class="sound-btn test" on:click={playCustomIncreaseSound}>▶️ ทดสอบ</button>
+              </div>
+            </div>
+          {:else if settingsTab === 'sound'}
+            <!-- Sound Customization -->
+          <div class="settings-group">
+              <h4 class="settings-group-title">🔊 ปรับแต่งเสียง</h4>
+              
+              <!-- Sound Toggle -->
+              <div class="sound-toggle">
+                <span class="sound-toggle-label">เปิด/ปิดเสียง:</span>
+                <button 
+                  class="toggle-switch {soundEnabled ? 'active' : ''}"
+                      on:click={() => soundEnabled = !soundEnabled}
+                  role="switch"
+                  aria-checked={soundEnabled}
+                >
+                  <div class="toggle-knob"></div>
+                </button>
+              </div>
+              
+              <!-- Custom Sound Upload -->
+              <div class="sound-upload-section">
+                <h5 class="sound-section-title">📁 อัพโหลดเสียงใหม่</h5>
+                
+                <div class="sound-upload-item">
+                  <span class="sound-upload-label">เสียงเพิ่ม:</span>
+                  <input 
+                    type="file" 
+                    accept="audio/mp3,audio/wav"
+                    on:change={(e) => handleSoundUpload(e, 'increase')}
+                    class="sound-file-input"
+                    id="increase-sound-input"
+                  />
+                  <label for="increase-sound-input" class="sound-upload-btn">
+                    📂 เลือกไฟล์
+                  </label>
+                  {#if customIncreaseSound}
+                        <button class="sound-btn test" on:click={() => audioUp?.play()}>▶️ ทดสอบ</button>
                         <button class="sound-btn delete" on:click={() => {
                           customIncreaseSound = null;
                           audioUpCustom = null;
                           uploadMessage = 'ลบเสียง increase แล้ว! ✅';
                         }} title="ลบเสียงกำหนดเอง">🗑️ ลบ</button>
-                      {/if}
-                    </div>
-                    
-                    <div class="sound-upload-item">
-                      <span class="sound-upload-label">เสียงลด:</span>
-                      <input 
-                        type="file" 
-                        accept="audio/mp3,audio/wav"
-                        on:change={(e) => handleSoundUpload(e, 'decrease')}
-                        class="sound-file-input"
-                        id="decrease-sound-input"
-                      />
-                      <label for="decrease-sound-input" class="sound-upload-btn">
-                        📂 เลือกไฟล์
-                      </label>
-                      {#if customDecreaseSound}
-                        <button class="sound-btn test" on:click={playCustomDecreaseSound}>▶️ ทดสอบ</button>
+                  {/if}
+                </div>
+                
+                <div class="sound-upload-item">
+                  <span class="sound-upload-label">เสียงลด:</span>
+                  <input 
+                    type="file" 
+                    accept="audio/mp3,audio/wav"
+                    on:change={(e) => handleSoundUpload(e, 'decrease')}
+                    class="sound-file-input"
+                    id="decrease-sound-input"
+                  />
+                  <label for="decrease-sound-input" class="sound-upload-btn">
+                    📂 เลือกไฟล์
+                  </label>
+                  {#if customDecreaseSound}
+                        <button class="sound-btn test" on:click={() => audioDown?.play()}>▶️ ทดสอบ</button>
                         <button class="sound-btn delete" on:click={() => {
                           customDecreaseSound = null;
                           audioDownCustom = null;
-                          uploadMessage = 'ลบเสียง decrease แล้ว! ✅';
+                          uploadMessage = 'ลบเสียงกำหนดเองแล้ว! ✅';
                         }} title="ลบเสียงกำหนดเอง">🗑️ ลบ</button>
-                      {/if}
-                    </div>
-                  </div>
-                  
+                  {/if}
+                </div>
+              </div>
+              
                   <!-- Sound Test Controls -->
-                  <div class="sound-test-section">
+              <div class="sound-test-section">
                     <h5 class="sound-section-title">🎵 ทดสอบเสียง</h5>
-                    <div class="sound-test-controls">
-                      <button class="sound-btn test" on:click={playCustomIncreaseSound || (() => audioUp?.play())}>🔊 เพิ่ม</button>
-                      <button class="sound-btn test" on:click={playCustomDecreaseSound || (() => audioDown?.play())}>🔊 ลด</button>
-                    </div>
-                  </div>
-                  
+                <div class="sound-test-controls">
+                      <button class="sound-btn test" on:click={() => audioUp?.play()}>🔊 เพิ่ม</button>
+                      <button class="sound-btn test" on:click={() => audioDown?.play()}>🔊 ลด</button>
+            </div>
+          </div>
+              
                   <!-- Upload Message -->
                   {#if uploadMessage}
                     <div class="upload-message">{uploadMessage}</div>
                   {/if}
-                </div>
-              {/if}
             </div>
+          {/if}
+        </div>
 
             <!-- Modal Footer -->
             <div class="modal-footer">
   
             </div>
-          </div>
-        </div>
-      {/if}
+      </div>
+    </div>
+  {/if}
 
   <!-- Modal PRESET -->
   {#if showPresetModal}
@@ -1713,7 +1939,7 @@
           <div class="preset-list">
             {#each $presets as preset}
               <div class="preset-item-btn {preset === $currentPreset ? 'active' : ''}" on:click={() => selectPreset(preset)}>
-                <span class="preset-name">{preset}</span>
+                  <span class="preset-name">{preset}</span>
                 <div class="preset-inline-actions">
                   {#if preset === 'Default'}
                     <button class="preset-btn edit" on:click|stopPropagation={() => startEditPreset(preset)} title="เปลี่ยนชื่อ">เปลี่ยนชื่อ</button>
@@ -1789,7 +2015,7 @@
   {/if}
   {/if}
 
-</div>
+          </div>
 
 <style>
   .control-app {
@@ -2144,6 +2370,8 @@
     transform: translateY(-2px);
   }
 
+
+
   /* Modal Styles - already glassmorphism, keep as is */
 
   /* iOS style window controls */
@@ -2423,6 +2651,41 @@
   .settings-btn.update:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .settings-btn.secondary {
+    background: transparent;
+    border: 2px solid #00e5ff;
+    border-radius: 8px;
+    color: #00e5ff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-left: 10px;
+  }
+
+  .settings-btn.secondary:hover {
+    background: rgba(0, 229, 255, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .settings-btn {
+    background: transparent;
+    border: 2px solid #00e5ff;
+    border-radius: 8px;
+    color: #00e5ff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .settings-btn:hover {
+    background: rgba(0, 229, 255, 0.1);
+    transform: translateY(-1px);
   }
 
   /* Modal Styles */
@@ -3192,6 +3455,78 @@
     60% { transform: translateY(-5px); }
   }
 
+  .skip-btn {
+    background: linear-gradient(135deg, #6c757d, #495057);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-left: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .skip-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(108, 117, 125, 0.4);
+  }
+
+  .skip-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+  }
+
+  .skip-btn:hover::before {
+    left: 100%;
+  }
+
+  /* General Settings Styles */
+  .settings-section {
+    margin-bottom: 25px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .settings-section-title {
+    margin: 0 0 15px 0;
+    color: #007AFF;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .app-info {
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .app-info p {
+    margin: 8px 0;
+  }
+
+  .app-link {
+    color: #007AFF;
+    text-decoration: none;
+    transition: color 0.3s ease;
+  }
+
+  .app-link:hover {
+    color: #00D4FF;
+    text-decoration: underline;
+  }
+
 </style>
 
 <!-- License Modal -->
@@ -3231,6 +3566,35 @@
         <div class="modal-actions">
           <button class="confirm-btn" on:click={validateLicenseKey}>
             ยืนยัน
+          </button>
+          <button class="skip-btn" on:click={closeLicenseModal}>
+            ข้าม
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Reset Confirmation Modal -->
+{#if showResetConfirmModal}
+  <div class="modal-backdrop" on:click={() => showResetConfirmModal = false}>
+    <div class="modal reset-confirm-modal" on:click|stopPropagation>
+      <div class="modal-header">
+        <h3>🔄 ยืนยันการรีเซ็ต</h3>
+        <button class="modal-close" on:click={() => showResetConfirmModal = false}>×</button>
+      </div>
+      <div class="modal-body" style="padding: 20px 24px;">
+        <p style="margin: 0 0 20px 0; color: #fff; font-size: 16px;">คุณต้องการรีเซ็ตคีย์ลัดเป็นค่าเริ่มต้นหรือไม่?</p>
+        <div class="modal-actions" style="display: flex; gap: 10px; justify-content: center;">
+          <button class="settings-btn reset" on:click={async () => {
+            showResetConfirmModal = false;
+            await resetHotkeys();
+          }}>
+            ยืนยัน
+          </button>
+          <button class="settings-btn secondary" on:click={() => showResetConfirmModal = false}>
+            ยกเลิก
           </button>
         </div>
       </div>

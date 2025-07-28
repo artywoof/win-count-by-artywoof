@@ -1,10 +1,13 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { checkUpdate, installUpdate, onUpdaterEvent } from '@tauri-apps/api/updater';
+  import { relaunch } from '@tauri-apps/api/process';
   import audioManager from '$lib/audioManager';
   import { hotkeySettings, keybindToString, type Keybind } from '$lib/stores';
   import { registerHotkeysFromSettings, getHotkeyConflicts } from '$lib/hotkeyManager';
-  import autoUpdater from '$lib/autoUpdater';
+
+  import ErrorDisplay from './ErrorDisplay.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -35,6 +38,9 @@
 
   // Auto Update state
   let isCheckingUpdate = false;
+  let updateAvailable = false;
+  let updateMessage = '';
+  let updateProgress = 0;
 
   // Hotkey conflicts
   let hotkeyConflicts: string[] = [];
@@ -64,12 +70,53 @@
     }
   }
 
+  // Auto Update functions
+  async function runUpdater() {
+    try {
+      isCheckingUpdate = true;
+      updateMessage = 'กำลังตรวจสอบอัปเดต...';
+      
+      const { shouldUpdate, manifest } = await checkUpdate();
+
+      if (shouldUpdate) {
+        updateAvailable = true;
+        updateMessage = `พบเวอร์ชันใหม่ ${manifest?.version}! กำลังดาวน์โหลด...`;
+
+        // ดาวน์โหลดอัปเดต (Tauri จัดการให้เบื้องหลัง)
+        await installUpdate();
+
+        // ดาวน์โหลดเสร็จแล้ว, ถามผู้ใช้เพื่อรีสตาร์ท
+        updateMessage = 'ดาวน์โหลดเสร็จสิ้น! ต้องการรีสตาร์ทเพื่ออัปเดตเลยไหม?';
+      } else {
+        updateMessage = 'คุณใช้เวอร์ชันล่าสุดแล้ว!';
+        updateAvailable = false;
+      }
+    } catch (error) {
+      console.error('Update error:', error);
+      updateMessage = 'เกิดข้อผิดพลาดในการตรวจสอบอัปเดต';
+      updateAvailable = false;
+    } finally {
+      isCheckingUpdate = false;
+    }
+  }
+
+  async function restartAndInstall() {
+    try {
+      updateMessage = 'กำลังรีสตาร์ทเพื่อติดตั้งอัปเดต...';
+      await relaunch();
+    } catch (error) {
+      console.error('Restart error:', error);
+      updateMessage = 'เกิดข้อผิดพลาดในการรีสตาร์ท';
+    }
+  }
+
 
 
   // Hotkey recording functions
   async function startRecording(actionId: string) {
     console.log('🎤 Starting recording for:', actionId);
     console.log('🎤 Current recordingHotkey before:', recordingHotkey);
+    console.log('🎤 Function called from:', new Error().stack?.split('\n')[2]);
     
     recordingHotkey = actionId;
     recordingKeybind = {};
@@ -96,12 +143,19 @@
     }, RECORDING_TIMEOUT_MS);
     
     console.log('🎤 Recording started, waiting for key press... (timeout:', RECORDING_TIMEOUT_MS, 'ms)');
+    
+    // Test if event listener is working
+    setTimeout(() => {
+      console.log('🔍 Testing event listener - recordingHotkey should still be:', actionId);
+      console.log('🔍 Actual recordingHotkey is:', recordingHotkey);
+    }, 1000);
   }
 
 
 
   function stopRecording() {
     console.log('🛑 stopRecording called, recordingHotkey:', recordingHotkey);
+    console.log('🛑 Call stack:', new Error().stack);
     
     if (recordingTimeout) {
       clearTimeout(recordingTimeout);
@@ -132,23 +186,17 @@
     }
   }
 
-  // Auto Update functions
+  // Auto Update functions using Tauri invoke
   async function checkForUpdates() {
     if (isCheckingUpdate) return;
     
     isCheckingUpdate = true;
     try {
-      const result = await autoUpdater.checkForUpdates();
+      // Use Tauri's built-in updater dialog
+      await invoke('tauri', { cmd: 'updater', action: 'check' });
       
-      if (result.hasUpdate && result.updateInfo) {
-        console.log('🔄 Update available:', result.updateInfo.version);
-        // Show notification or dispatch event to parent
-        dispatch('updateAvailable', result.updateInfo);
-      } else {
-        console.log('✅ No updates available');
-        // Show no update notification
-        dispatch('noUpdateAvailable');
-      }
+      console.log('✅ Update check completed');
+      dispatch('updateCheckCompleted');
     } catch (error) {
       console.error('❌ Failed to check for updates:', error);
       dispatch('updateError', error);
@@ -267,23 +315,138 @@
     dispatch('close');
   }
 
+  // Test hotkeys function
+  async function testHotkeys() {
+    console.log('🧪 Testing hotkeys...');
+    try {
+      const testResult = await invoke('test_hotkeys');
+      console.log('🧪 Hotkey test result:', testResult);
+      alert(`🧪 Hotkey Test Result:\n\n${testResult}`);
+    } catch (error) {
+      console.error('❌ Hotkey test failed:', error);
+      alert(`❌ Hotkey test failed: ${error}`);
+    }
+  }
+
   // Reset hotkeys to defaults
-  function resetHotkeys() {
-    hotkeySettings.resetToDefaults();
-    registerHotkeysFromSettings();
+  async function resetHotkeys() {
+    console.log('🔄 RESET HOTKEYS BUTTON CLICKED!');
+    
+    try {
+      // 1. สั่งให้ Backend ล้างไฟล์ Hotkey เก่าทิ้ง
+      await invoke('clear_hotkeys');
+      console.log('✅ Backend hotkeys file cleared.');
+      
+      // 2. สั่งให้ Frontend รีเซ็ตค่าใน Store (ซึ่งจะอัปเดตหน้าจอ และไปกระตุ้นระบบ Sync อัตโนมัติ)
+      hotkeySettings.resetToDefaults();
+      console.log('✅ Frontend settings reset. Automatic sync will handle the rest.');
+
+      // 3. บันทึกค่าเริ่มต้นที่ถูกต้องลงในไฟล์ backend
+      console.log('💾 Saving default hotkeys to backend...');
+      await invoke('save_default_hotkeys');
+      console.log('✅ Default hotkeys saved to backend');
+      
+      // 4. Reload hotkeys ใน backend
+      try {
+        await invoke('reload_hotkeys_command');
+        console.log('✅ Backend hotkeys reloaded with defaults');
+      } catch (error) {
+        console.error('❌ Failed to reload backend hotkeys:', error);
+      }
+      
+      showErrorMessage(
+        'รีเซ็ตสำเร็จ!', 
+        'คีย์ลัดถูกรีเซ็ตเป็นค่าเริ่มต้นเรียบร้อยแล้ว!', 
+        'success'
+      );
+      
+    } catch (error) {
+      console.error('❌ Failed to reset hotkeys:', error);
+      showErrorMessage(
+        'รีเซ็ตไม่สำเร็จ', 
+        `เกิดข้อผิดพลาดในการรีเซ็ตคีย์ลัด: ${error}`, 
+        'error'
+      );
+    }
   }
 
 
 
   // Load settings when component is created
   loadSettings();
+  
+  // Debug: Log activeTab on mount
+  console.log('🔍 SettingsModal - activeTab on mount:', activeTab);
+  console.log('🔍 SettingsModal - hotkeys tab condition:', activeTab === 'hotkeys');
+
+  // Sync hotkeys with backend on mount
+  onMount(async () => {
+    console.log('🔧 SettingsModal mounted, syncing hotkeys with backend...');
+    try {
+      // Check if hotkey file exists before syncing
+      const fileCheck = await invoke('check_hotkey_file') as string;
+      console.log('🔍 Hotkey file check on mount:', fileCheck);
+      
+      // Only sync if file exists (has custom hotkeys)
+      if (fileCheck.includes('File exists:')) {
+        console.log('📄 Hotkey file exists, syncing with backend...');
+        await registerHotkeysFromSettings();
+        console.log('✅ Hotkeys synced with backend on mount');
+      } else {
+        console.log('ℹ️ No hotkey file found, using backend defaults');
+        // Just reload to ensure defaults are active
+        await invoke('reload_hotkeys_command');
+        console.log('✅ Backend defaults loaded');
+        
+        // Also sync frontend settings with backend defaults
+        console.log('🔄 Syncing frontend settings with backend defaults...');
+        try {
+          const testResult = await invoke('test_hotkeys') as string;
+          console.log('🧪 Backend hotkeys:', testResult);
+          
+          // Parse the hotkeys from the test result and update frontend
+          if (testResult.includes('Hotkeys loaded:')) {
+            const hotkeysMatch = testResult.match(/Hotkeys loaded: \{([^}]+)\}/);
+            if (hotkeysMatch) {
+              const hotkeysStr = hotkeysMatch[1];
+              console.log('🎹 Parsed hotkeys string:', hotkeysStr);
+              
+              // Update frontend settings to match backend
+              hotkeySettings.update(settings => {
+                // Reset to defaults first
+                settings.actions.increment.currentKeybind = settings.actions.increment.defaultKeybind;
+                settings.actions.decrement.currentKeybind = settings.actions.decrement.defaultKeybind;
+                settings.actions.increment10.currentKeybind = settings.actions.increment10.defaultKeybind;
+                settings.actions.decrement10.currentKeybind = settings.actions.decrement10.defaultKeybind;
+                return settings;
+              });
+              console.log('✅ Frontend settings synced with backend defaults');
+            }
+          }
+        } catch (error) {
+          console.error('❌ Failed to sync frontend with backend defaults:', error);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to sync hotkeys on mount:', error);
+    }
+  });
 
   // Add keydown listener when component mounts
   onMount(() => {
     console.log('🔧 SettingsModal mounted, adding keydown listener');
+    console.log('🔧 Component state - recordingHotkey:', recordingHotkey);
+    
+    // Track modifier keys state
+    let modifierState = {
+      alt: false,
+      shift: false,
+      ctrl: false,
+      meta: false
+    };
     
     // Add global keydown listener
-    const handleGlobalKeydown = (event: KeyboardEvent) => {
+    const handleGlobalKeydown = async (event: KeyboardEvent) => {
       console.log('🎹 Global keydown event received:', event.code, 'Recording:', recordingHotkey, 'Target:', event.target);
       
       if (!recordingHotkey) {
@@ -296,42 +459,117 @@
       event.preventDefault();
       event.stopPropagation();
 
-      // Don't allow only modifier keys
-      if (["AltLeft","AltRight","ShiftLeft","ShiftRight","ControlLeft","ControlRight","MetaLeft","MetaRight"].includes(event.code)) {
-        console.log('🚫 Ignoring modifier-only key');
-        return;
+      // Update modifier state
+      if (event.code === 'AltLeft' || event.code === 'AltRight') {
+        modifierState.alt = true;
+        console.log('🔧 Alt modifier pressed');
+        return; // Don't record modifier-only press
+      }
+      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+        modifierState.shift = true;
+        console.log('🔧 Shift modifier pressed');
+        return; // Don't record modifier-only press
+      }
+      if (event.code === 'ControlLeft' || event.code === 'ControlRight') {
+        modifierState.ctrl = true;
+        console.log('🔧 Ctrl modifier pressed');
+        return; // Don't record modifier-only press
+      }
+      if (event.code === 'MetaLeft' || event.code === 'MetaRight') {
+        modifierState.meta = true;
+        console.log('🔧 Meta modifier pressed');
+        return; // Don't record modifier-only press
       }
 
-      const keybind: Keybind = {
-        code: event.code,
-        alt: event.altKey,
-        shift: event.shiftKey,
-        ctrl: event.ctrlKey,
-        meta: event.metaKey
-      };
-      
-      console.log('✅ Saving hotkey:', keybindToString(keybind));
-      
-      // Update the hotkey settings
-      hotkeySettings.update(settings => {
-        if (settings.actions[recordingHotkey as keyof typeof settings.actions]) {
-          settings.actions[recordingHotkey as keyof typeof settings.actions].currentKeybind = keybind;
+      // Only record when we have a non-modifier key
+      if (event.code && !["AltLeft","AltRight","ShiftLeft","ShiftRight","ControlLeft","ControlRight","MetaLeft","MetaRight"].includes(event.code)) {
+        const keybind: Keybind = {
+          code: event.code,
+          alt: modifierState.alt || event.altKey,
+          shift: modifierState.shift || event.shiftKey,
+          ctrl: modifierState.ctrl || event.ctrlKey,
+          meta: modifierState.meta || event.metaKey
+        };
+        
+        console.log('✅ Saving hotkey:', keybindToString(keybind));
+        
+        // Update the hotkey settings
+        hotkeySettings.update(settings => {
+          const actionKey = recordingHotkey as keyof typeof settings.actions;
+          if (settings.actions[actionKey]) {
+            settings.actions[actionKey].currentKeybind = keybind;
+          }
+          return settings;
+        });
+        
+        // Sync hotkeys with backend using the proper function
+        try {
+          console.log('🔄 Syncing hotkeys with backend...');
+          await registerHotkeysFromSettings();
+          console.log('✅ Hotkeys synced with backend successfully');
+          
+          // Show success message
+          const hotkeyString = keybindToString(keybind);
+          console.log(`✅ Hotkey updated successfully: ${recordingHotkey} -> ${hotkeyString}`);
+          showErrorMessage(
+            'บันทึกสำเร็จ!', 
+            `คีย์ลัด "${recordingHotkey}" ถูกบันทึกแล้ว\n\nคีย์ลัดพร้อมใช้งานทันที`, 
+            'success'
+          );
+        } catch (error) {
+          console.error('❌ Failed to sync hotkeys with backend:', error);
+          showErrorMessage(
+            'บันทึกไม่สำเร็จ', 
+            `ไม่สามารถบันทึกคีย์ลัดได้: ${error}\n\nกรุณาลองใหม่อีกครั้ง`, 
+            'error'
+          );
         }
-        return settings;
-      });
-      
-      // Stop recording
-      stopRecording();
+        
+        // Reset modifier state
+        modifierState = { alt: false, shift: false, ctrl: false, meta: false };
+        
+        // Stop recording
+        stopRecording();
+      }
     };
 
-    // Add listener to window instead of document for global capture
-    window.addEventListener('keydown', handleGlobalKeydown, true);
-    console.log('✅ Keydown listener added to window with capture');
+    // Add keyup listener to reset modifier state
+    const handleGlobalKeyup = (event: KeyboardEvent) => {
+      if (event.code === 'AltLeft' || event.code === 'AltRight') {
+        modifierState.alt = false;
+        console.log('🔧 Alt modifier released');
+      }
+      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+        modifierState.shift = false;
+        console.log('🔧 Shift modifier released');
+      }
+      if (event.code === 'ControlLeft' || event.code === 'ControlRight') {
+        modifierState.ctrl = false;
+        console.log('🔧 Ctrl modifier released');
+      }
+      if (event.code === 'MetaLeft' || event.code === 'MetaRight') {
+        modifierState.meta = false;
+        console.log('🔧 Meta modifier released');
+      }
+    };
+
+    // Add listeners to document for better capture
+    document.addEventListener('keydown', handleGlobalKeydown, true);
+    document.addEventListener('keyup', handleGlobalKeyup, true);
+    console.log('✅ Keydown and keyup listeners added to document with capture');
+
+    // Test if listener is working
+    setTimeout(() => {
+      console.log('🔍 Testing keydown listener - simulating keydown event');
+      const testEvent = new KeyboardEvent('keydown', { code: 'KeyA', key: 'A' });
+      document.dispatchEvent(testEvent);
+    }, 2000);
 
     // Cleanup
     return () => {
-      window.removeEventListener('keydown', handleGlobalKeydown, true);
-      console.log('🧹 Keydown listener removed from window');
+      document.removeEventListener('keydown', handleGlobalKeydown, true);
+      document.removeEventListener('keyup', handleGlobalKeyup, true);
+      console.log('🧹 Keydown and keyup listeners removed from document');
     };
   });
 
@@ -341,6 +579,23 @@
       hotkeyConflicts = getHotkeyConflicts(settings);
       registerHotkeysFromSettings();
     });
+
+  // Error display state
+  let showError = false;
+  let errorTitle = '';
+  let errorMessage = '';
+  let errorType: 'error' | 'warning' | 'success' | 'info' = 'error';
+
+  function showErrorMessage(title: string, message: string, type: 'error' | 'warning' | 'success' | 'info' = 'error') {
+    errorTitle = title;
+    errorMessage = message;
+    errorType = type;
+    showError = true;
+  }
+
+  function hideError() {
+    showError = false;
+  }
 </script>
 
 
@@ -409,15 +664,19 @@
                       <span class="recording-indicator">🎤 กดคีย์...</span>
                     {:else}
                       <span class="hotkey-display">
-                        {keybindToString($hotkeySettings.actions[action.id]?.currentKeybind || {})}
+                        {keybindToString($hotkeySettings.actions[action.id as keyof typeof $hotkeySettings.actions]?.currentKeybind || {})}
                       </span>
                     {/if}
                   </div>
                   <button 
                     class="change-hotkey-btn"
                     class:recording={recordingHotkey === action.id}
-                    on:click={() => {
+                    on:click={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       console.log('🔘 Button clicked for action:', action.id);
+                      console.log('🔘 Event target:', e.target);
+                      console.log('🔘 Current recordingHotkey:', recordingHotkey);
                       startRecording(action.id);
                     }}
                     disabled={recordingHotkey && recordingHotkey !== action.id}
@@ -429,9 +688,43 @@
             {/each}
           </div>
 
-          <div class="hotkey-actions">
-            <button class="reset-hotkeys-btn" on:click={resetHotkeys}>
+          <!-- DEBUG: Hotkeys tab content should be visible -->
+          <div style="background: red; color: white; padding: 10px; margin: 10px 0; border-radius: 5px;">
+            🔍 DEBUG: Hotkeys tab is active! activeTab = {activeTab}
+          </div>
+          
+          <div class="settings-actions" style="display: flex; gap: 10px; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px;">
+            <!-- DEBUG: Reset button should be visible -->
+            <div style="background: yellow; color: black; padding: 5px; margin: 5px; border-radius: 3px;">
+              🔍 DEBUG: About to render reset button
+            </div>
+            
+            <button 
+              class="reset-hotkeys-btn" 
+              on:click={resetHotkeys}
+              style="background: #dc3545; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; display: block;"
+            >
               🔄 รีเซ็ตคีย์ลัดเป็นค่าเริ่มต้น
+            </button>
+            
+            <div style="background: green; color: white; padding: 5px; margin: 5px; border-radius: 3px;">
+              🔍 DEBUG: Reset button rendered
+            </div>
+            
+            <button 
+              class="test-hotkeys-btn" 
+              on:click={testHotkeys}
+              style="background: #28a745; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;"
+            >
+              🧪 ทดสอบคีย์ลัด
+            </button>
+            <button 
+              class="settings-btn update" 
+              on:click={checkForUpdates} 
+              disabled={isCheckingUpdate}
+              style="background: #007AFF; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;"
+            >
+              {isCheckingUpdate ? '🔄 กำลังตรวจสอบ...' : '🔄 ตรวจสอบอัปเดต'}
             </button>
           </div>
         </div>
@@ -705,9 +998,22 @@
           </div>
 
           <div class="general-actions">
-            <button class="action-btn" on:click={() => dispatch('checkUpdate')} disabled={isCheckingUpdate}>
+            <button class="action-btn" on:click={runUpdater} disabled={isCheckingUpdate}>
               {isCheckingUpdate ? '🔄 กำลังตรวจสอบ...' : '🔄 ตรวจสอบอัปเดต'}
             </button>
+            
+            {#if updateMessage}
+              <div class="update-message {updateAvailable ? 'success' : 'info'}">
+                {updateMessage}
+              </div>
+            {/if}
+            
+            {#if updateAvailable}
+              <button class="action-btn update-btn" on:click={restartAndInstall}>
+                🔄 รีสตาร์ทเพื่ออัปเดต
+              </button>
+            {/if}
+            
             <button class="action-btn">📁 เปิดโฟลเดอร์ข้อมูล</button>
             <button class="action-btn">📋 คัดลอกข้อมูลระบบ</button>
           </div>
@@ -718,6 +1024,15 @@
 
   </div>
 </div>
+
+<!-- Error Display Component -->
+<ErrorDisplay 
+  bind:show={showError}
+  title={errorTitle}
+  message={errorMessage}
+  type={errorType}
+  on:close={hideError}
+/>
 
 <style>
   .modal-backdrop {
@@ -1194,6 +1509,36 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .update-message {
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+  }
+
+  .update-message.success {
+    background: rgba(40, 167, 69, 0.2);
+    border: 1px solid #28a745;
+    color: #28a745;
+  }
+
+  .update-message.info {
+    background: rgba(0, 122, 255, 0.2);
+    border: 1px solid #007AFF;
+    color: #007AFF;
+  }
+
+  .update-btn {
+    background: #28a745 !important;
+    color: white !important;
+  }
+
+  .update-btn:hover {
+    background: #218838 !important;
   }
 
   .action-btn {
