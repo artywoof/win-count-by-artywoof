@@ -85,6 +85,17 @@
   let recordingHotkey: string | null = null;
   let recordingTimeout: number | null = null;
 
+  // Donate state
+  let showDonateModal = false;
+  let donateAmount = '';
+  let donateWinCondition = '';
+  let donateTargetAmount = '';
+  let donateOperation = ''; // 'add' or 'subtract'
+  let missingFields: string[] = [];
+  let operationError = false;
+  let showResultModal = false;
+  let resultMessage = '';
+
   // Settings functions
   function startHotkeyRecording(action: string) {
     recordingHotkey = action;
@@ -99,6 +110,89 @@
     recordingTimeout = setTimeout(() => {
       stopHotkeyRecording();
     }, 5000);
+  }
+
+  // Donate functions
+  function saveDonateValues() {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('donateAmount', donateAmount);
+      localStorage.setItem('donateWinCondition', donateWinCondition);
+      localStorage.setItem('donateOperation', donateOperation);
+      console.log('💰 Saved donate values to localStorage:', { donateAmount, donateWinCondition, donateOperation });
+    }
+  }
+
+  function openDonateModal() {
+    showDonateModal = true;
+    // ไม่รีเซ็ตค่าเดิม เพื่อให้ใช้ค่าที่บันทึกไว้
+    donateTargetAmount = '';
+    donateOperation = ''; // ไม่เริ่มต้นที่ปุ่มบวก
+  }
+
+  function closeDonateModal() {
+    showDonateModal = false;
+  }
+
+  async function processDonate() {
+    // ตรวจสอบว่ากรอกครบทุกช่องหรือไม่
+    missingFields = [];
+    operationError = false;
+    if (!donateAmount) missingFields.push('จำนวนกี่บาท');
+    if (!donateWinCondition) missingFields.push('เท่ากับกี่วิน');
+    if (!donateTargetAmount) missingFields.push('จำนวนบาท');
+    if (donateOperation !== 'add' && donateOperation !== 'subtract') {
+      operationError = true;
+    }
+
+    if (missingFields.length > 0 || operationError) {
+      // ไม่ต้องแจ้งเตือน alert ใดๆ
+      return;
+    }
+
+    const amount = parseInt(donateAmount);
+    const winCondition = parseInt(donateWinCondition);
+    const targetAmount = parseInt(donateTargetAmount);
+
+    if (isNaN(amount) || isNaN(winCondition) || isNaN(targetAmount)) {
+      alert('กรุณากรอกตัวเลขที่ถูกต้องในทุกช่อง');
+      return;
+    }
+
+    if (amount <= 0 || winCondition <= 0 || targetAmount <= 0) {
+      alert('กรุณากรอกตัวเลขที่มากกว่า 0 ในทุกช่อง');
+      return;
+    }
+
+    // คำนวณจำนวนวินที่จะเพิ่ม/ลด
+    const winChange = Math.floor(targetAmount / amount) * winCondition;
+    const finalWinChange = donateOperation === 'add' ? winChange : -winChange;
+    const currentWin = $win;
+    const newWinValue = currentWin + finalWinChange;
+
+    // สร้างข้อความผลลัพธ์
+    const operationSymbol = donateOperation === 'add' ? '+' : '-';
+    const operationText = donateOperation === 'add' ? 'บวก' : 'ลบ';
+    
+    resultMessage = `${currentWin} ${operationSymbol} ${Math.abs(winChange)} = ${newWinValue}`;
+
+    // อัปเดตค่า Win
+    await tauriSetWin(newWinValue);
+
+    // แสดงหน้าต่างแจ้งเตือนผลลัพธ์
+    showResultModal = true;
+
+    // ปิด modal โดเนท
+    closeDonateModal();
+
+    // ปิดหน้าต่างผลลัพธ์หลังจาก 1.5 วินาที
+    setTimeout(() => {
+      closeResultModal();
+    }, 1500);
+  }
+
+  function closeResultModal() {
+    showResultModal = false;
+    resultMessage = '';
   }
 
 
@@ -1371,6 +1465,25 @@
     // Check license status
     await checkLicenseStatus();
     
+    // Load donate values from localStorage
+    if (typeof localStorage !== 'undefined') {
+      const savedDonateAmount = localStorage.getItem('donateAmount');
+      const savedDonateWinCondition = localStorage.getItem('donateWinCondition');
+      const savedDonateOperation = localStorage.getItem('donateOperation');
+      if (savedDonateAmount) {
+        donateAmount = savedDonateAmount;
+        console.log('💰 Loaded donate amount from localStorage:', donateAmount);
+      }
+      if (savedDonateWinCondition) {
+        donateWinCondition = savedDonateWinCondition;
+        console.log('💰 Loaded donate win condition from localStorage:', donateWinCondition);
+      }
+      if (savedDonateOperation) {
+        donateOperation = savedDonateOperation;
+        console.log('💰 Loaded donate operation from localStorage:', donateOperation);
+      }
+    }
+    
     console.log('✅ App initialization complete');
   });
 
@@ -1635,7 +1748,7 @@
 
     <!-- Goal Section -->
     <div class="goal-container">
-      <span class="goal-label">GOAL:</span>
+      <span class="goal-label">เป้าหมาย:</span>
       <div class="goal-number-box" on:click={() => { if (!editingGoal) { startEditGoal(); } }} tabindex="0">
         {#if editingGoal}
           <input
@@ -1663,12 +1776,12 @@
     <div class="action-section">
       <!-- Preset Button -->
       <button class="donate-btn" on:click={() => showPresetModal = true}>
-        PRESET
+        เลือกเกม
       </button>
 
       <!-- Donate Button -->
-      <button class="donate-btn" on:click={() => console.log('Donate clicked - logic to be added later')}>
-        DONATE
+      <button class="donate-btn" on:click={() => openDonateModal()}>
+        โดเนท
       </button>
 
       <!-- Toggle Controls -->
@@ -1676,7 +1789,7 @@
         <div class="toggle-controls">
           <!-- Icon Toggle -->
           <div class="toggle-row">
-            <span class="toggle-label">ICON</span>
+            <span class="toggle-label">ไอคอน</span>
             <button 
               class="toggle-switch {$overlayShowCrown ? 'active' : ''}"
               on:click={toggleIcon}
@@ -1693,7 +1806,7 @@
 
           <!-- Goal Toggle -->
           <div class="toggle-row goal-toggle-row">
-            <span class="toggle-label">GOAL</span>
+            <span class="toggle-label">เป้าหมาย</span>
             <button 
               class="toggle-switch {$overlayShowGoal ? 'active' : ''}"
               on:click={toggleGoal}
@@ -1712,10 +1825,10 @@
   <!-- Bottom Action Buttons -->
   <div class="bottom-actions" style="margin-top: -69px;">
     <button class="action-btn secondary copy-btn" on:click={() => showSettingsModal = true}>
-      Setting
+      ตั้งค่า
     </button>
     <button class="action-btn secondary copy-btn" on:click={copyLink}>
-      Copy Link
+      คัดลอก
     </button>
     
   </div>
@@ -1942,7 +2055,12 @@
                   <span class="preset-name">{preset}</span>
                 <div class="preset-inline-actions">
                   {#if preset === 'Default'}
-                    <button class="preset-btn edit" on:click|stopPropagation={() => startEditPreset(preset)} title="เปลี่ยนชื่อ">เปลี่ยนชื่อ</button>
+                    {#if editingPreset === preset}
+                      <input class="rename-input" bind:value={renameValue} on:keydown|stopPropagation={(e) => e.key === 'Enter' && confirmRenamePreset(preset, renameValue)} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation />
+                      <button class="preset-btn cancel" on:click|stopPropagation={cancelEditPreset} title="ยกเลิก">ยกเลิก</button>
+                    {:else}
+                      <button class="preset-btn edit" on:click|stopPropagation={() => startEditPreset(preset)} title="เปลี่ยนชื่อ">เปลี่ยนชื่อ</button>
+                    {/if}
                   {:else if preset !== 'Default'}
                     {#if editingPreset === preset}
                       <input class="rename-input" bind:value={renameValue} on:keydown|stopPropagation={(e) => e.key === 'Enter' && confirmRenamePreset(preset, renameValue)} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation />
@@ -2009,6 +2127,94 @@
             <button class="action-btn confirm" on:click={confirmDeletePreset}>ยืนยัน</button>
             <button class="action-btn cancel" on:click={cancelDeletePreset}>ยกเลิก</button>
           </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Donate Modal -->
+  {#if showDonateModal}
+    <div class="modal-backdrop" on:click={closeDonateModal} on:keydown={(e) => e.key === 'Escape' && closeDonateModal()} role="button" tabindex="0">
+      <div class="modal donate-modal" on:click|stopPropagation role="dialog">
+        <div class="modal-header">
+          <h3>💰 โดเนท</h3>
+          <button class="modal-close" on:click={closeDonateModal}>×</button>
+        </div>
+        <div class="modal-body">
+          <div class="donate-form">
+            <div class="donate-input-group">
+              <label for="donate-amount">จำนวนกี่บาท?:</label>
+              <input 
+                id="donate-amount"
+                type="number" 
+                bind:value={donateAmount}
+                on:input={saveDonateValues}
+                placeholder="เช่น 25"
+                min="1"
+                class="donate-input {!donateAmount && missingFields.includes('จำนวนกี่บาท') ? 'error' : ''}"
+              />
+            </div>
+            
+            <div class="donate-input-group">
+              <label for="donate-win-condition">เท่ากับกี่วิน?:</label>
+              <input 
+                id="donate-win-condition"
+                type="number" 
+                bind:value={donateWinCondition}
+                on:input={saveDonateValues}
+                placeholder="เช่น 1"
+                min="1"
+                class="donate-input {!donateWinCondition && missingFields.includes('เท่ากับกี่วิน') ? 'error' : ''}"
+              />
+            </div>
+            
+            <div class="donate-input-group">
+              <label for="donate-target-amount">จำนวนบาท:</label>
+              <input 
+                id="donate-target-amount"
+                type="number" 
+                bind:value={donateTargetAmount}
+                placeholder="คนโดเนทมากี่บาท?"
+                min="1"
+                class="donate-input {!donateTargetAmount && missingFields.includes('จำนวนบาท') ? 'error' : ''}"
+              />
+            </div>
+            
+            <div class="donate-operation-group">
+              <label>บวกหรือลบ?:</label>
+              <div class="operation-buttons">
+                <button 
+                  class="operation-btn {donateOperation === 'add' ? 'active' : ''} {operationError ? 'error' : ''}" 
+                  on:click={() => {
+                    donateOperation = 'add';
+                    saveDonateValues();
+                  }}
+                >
+                  +
+                </button>
+                <button 
+                  class="operation-btn {donateOperation === 'subtract' ? 'active' : ''} {operationError ? 'error' : ''}" 
+                  on:click={() => {
+                    donateOperation = 'subtract';
+                    saveDonateValues();
+                  }}
+                >
+                  -
+                </button>
+              </div>
+            </div>
+            
+            <div class="donate-preview">
+              <p style="text-align: center;">เท่ากับ: {donateOperation === 'add' ? '+' : '-'}{donateTargetAmount && donateAmount && donateWinCondition ? Math.floor(parseInt(donateTargetAmount) / parseInt(donateAmount)) * parseInt(donateWinCondition) : '0'} วิน</p>
+            </div>
+            
+
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="donate-btn confirm" on:click={processDonate}>
+            ยืนยัน
+          </button>
         </div>
       </div>
     </div>
@@ -2735,7 +2941,7 @@
   }
 
   .modal-header h3 {
-    font-size: 20px;
+    font-size: 34px !important;
     font-weight: 700;
     color: #00e5ff;
     margin: 0;
@@ -2761,8 +2967,6 @@
 
   .modal-body {
     padding: 20px 24px 24px 24px;
-    overflow-y: auto;
-    max-height: 60vh;
   }
 
   /* Preset Modal Styles - ใช้โครงสร้างเหมือน Settings Modal */
@@ -3527,6 +3731,215 @@
     text-decoration: underline;
   }
 
+  .action-btn.cancel:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+
+  /* Donate Modal Styles */
+  .donate-modal {
+    max-width: 416px !important;
+    min-width: 416px !important;
+    width: 416px !important;
+    min-height: calc(100% - 98px) !important;
+    height: calc(100% - 98px) !important;
+  }
+
+  .donate-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .donate-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .donate-input-group label {
+    font-weight: 600;
+    color: #00e5ff;
+    font-size: 16px;
+  }
+
+  .donate-input {
+    padding: 12px;
+    border: 2px solid rgba(0, 229, 255, 0.3);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.4);
+    color: #fff;
+    font-size: 17px;
+    transition: all 0.3s ease;
+  }
+
+  .donate-input::-webkit-outer-spin-button,
+  .donate-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .donate-input[type=number] {
+    -moz-appearance: textfield;
+  }
+
+  .donate-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+    font-family: 'MiSansThai', sans-serif;
+    font-style: italic;
+  }
+
+  .donate-operation-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .donate-operation-group label {
+    font-weight: 600;
+    color: #00e5ff;
+    font-size: 16px;
+  }
+
+  .operation-buttons {
+    display: flex;
+    gap: 10px;
+  }
+
+  .operation-btn {
+    flex: 1;
+    padding: 1px 16px;
+    border: 2px solid rgba(0, 229, 255, 0.3);
+    border-radius: 8px;
+    background: transparent;
+    color: #00e5ff;
+    font-size: 44px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 2px 8px 0 rgba(0,229,255,0.08);
+    outline: none;
+    user-select: none;
+  }
+  .operation-btn:hover {
+    background: rgba(0, 229, 255, 0.12);
+    border-color: #00e5ff;
+    color: #fff;
+    box-shadow: 0 4px 18px 0 rgba(0,229,255,0.18);
+    transform: translateY(-2px) scale(1.04);
+  }
+  .operation-btn:active {
+    background: #00e5ff;
+    color: #000;
+    border-color: #00e5ff;
+    box-shadow: 0 2px 8px 0 rgba(0,229,255,0.18);
+    transform: scale(0.98);
+  }
+  .operation-btn.active {
+    background: linear-gradient(45deg, #00e5ff, #00bcd4);
+    color: #000;
+    border: 2.5px solid #00e5ff;
+    box-shadow: 0 4px 18px 0 rgba(0,229,255,0.18);
+    z-index: 2;
+    transform: scale(1.06);
+    font-weight: 700;
+  }
+  .operation-btn.error {
+    border-color: #ff6b6b !important;
+    background: rgba(255, 107, 107, 0.12) !important;
+    color: #ff6b6b !important;
+    animation: shake 0.5s ease-in-out;
+  }
+
+  .donate-preview {
+    background: rgba(0, 229, 255, 0.1);
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 6px;
+  }
+
+  .donate-preview p {
+    margin: 4px 0;
+    font-size: 24px;
+    color: #fff;
+  }
+
+  .donate-btn.confirm {
+    background: linear-gradient(45deg, #00e5ff, #00bcd4);
+    color: #000;
+    font-weight: 700;
+    border: none;
+    padding: 13px 16px;
+    font-size: 50px;
+    width: calc(100% - 72px);
+    margin: -22px auto 0 auto;
+    display: block;
+  }
+
+  .donate-btn.confirm:hover {
+    background: linear-gradient(45deg, #00bcd4, #00e5ff);
+    transform: translateY(-2px);
+  }
+
+  .donate-btn.cancel {
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 14px;
+    width: calc(50% - 8px);
+  }
+
+  .donate-btn.cancel:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+
+  .modal-footer {
+    background: transparent !important;
+    border-top: none !important;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .donate-preview p {
+    margin: 4px 0;
+    font-size: 24px;
+    color: #fff;
+  }
+
+  .donate-error {
+    background: rgba(255, 0, 0, 0.1);
+    border: 1px solid rgba(255, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 8px;
+    animation: shake 0.5s ease-in-out;
+  }
+
+  .donate-error p {
+    margin: 0;
+    font-size: 14px;
+    color: #ff6b6b;
+    white-space: pre-line;
+    text-align: center;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+
+  .donate-input.error {
+    border-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+    animation: shake 0.5s ease-in-out;
+  }
+
+
 </style>
 
 <!-- License Modal -->
@@ -3602,3 +4015,16 @@
   </div>
 {/if}
 
+<!-- Result Modal -->
+  {#if showResultModal}
+    <div class="modal-backdrop" on:click={closeResultModal}>
+      <div class="modal result-modal" on:click|stopPropagation>
+        <div class="modal-header">
+          <h3 style="text-align: center; width: 100%;">ผลลัพธ์</h3>
+        </div>
+        <div class="modal-body">
+          <p style="white-space: pre-line; text-align: center; font-size: 48px; line-height: 1.6; font-weight: 700; color: #00e5ff;">{resultMessage}</p>
+        </div>
+      </div>
+    </div>
+  {/if}

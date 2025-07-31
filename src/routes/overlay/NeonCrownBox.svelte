@@ -26,7 +26,7 @@
     </span>
     {#if showGoal}
       <span class="mx-[0.8vw] text-cyan-200">/</span>
-      <span class="text-pink-500" style="text-shadow: 0 0 12px #ff00ff">{goal}</span>
+      <span class="text-pink-500" style="text-shadow: 0 0 12px #ff00ff">เป้าหมาย</span>
     {/if}
   </div>
 </div>

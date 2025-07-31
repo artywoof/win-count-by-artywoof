@@ -37,12 +37,19 @@
   font-style: normal;
 }
 
+@font-face {
+  font-family: 'MiSansThai';
+  src: url('/assets/fonts/MiSansThai.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 /* Frameless window styles */
 html, body {
   margin: 0px;
   padding: 0px;
   overflow: hidden;
-  font-family: 'MiSansThai-Normal', sans-serif;
+  font-family: 'MiSansThai', 'MiSansThai-Normal', sans-serif;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -271,4 +278,20 @@ kbd {
   font-weight: 500;
   letter-spacing: 0.5px;
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.action-btn {
+  font-family: 'MiSansThai', 'MiSansThai-Normal', sans-serif;
+  background: transparent; 
+  border: 2px solid #00e5ff; 
+  border-radius: calc(476px * 0.029); /* ~14px */
+  color: #00e5ff;
+  font-size: calc(476px * 0.029 + 9px); /* ลดจาก +12px เป็น +9px */
+  font-weight: 700; 
+  padding: calc(776px * 0.016) calc(476px * 0.021); /* ~12px ~10px */
+  width: calc(476px * 0.40); /* 40% ของ main-content */
+  max-width: 190px;
+  transition: all 0.3s;
+  display: flex; align-items: center; justify-content: center;
+  height: calc(776px * 0.058); /* ~45px */
 }

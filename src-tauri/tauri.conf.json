@@ -53,7 +53,7 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/artywoof/win-count-by-artywoof/releases/download/Win_Count_v.1.0/latest.json"
+        "https://github.com/artywoof/win-count-by-artywoof/releases/latest/download/latest.json"
       ],
       "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ1NUQzQjdBNUMyRTRGRjUKUldUMVR5NWNlanRkMWRaaXUyS0JqNGJYakdxSUpTUzkyTUFQdEdrc0JkbWZObFUweEp5Y1BxakwK"

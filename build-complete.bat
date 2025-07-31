@@ -84,19 +84,7 @@ if exist "src-tauri\target\release\bundle\msi\Win_Count_by_ArtYWoof_1.0.0_x64_en
     exit /b 1
 )
 
-echo Step 3: Updating latest.json...
-echo.
-
-REM Read signature from file
-for /f "tokens=*" %%i in ('type "src-tauri\target\release\bundle\msi\Win_Count_by_ArtYWoof_1.0.0_x64_en-US.msi.sig"') do set SIGNATURE=%%i
-
-echo SIGNATURE: %SIGNATURE%
-echo.
-
-REM Update latest.json
-powershell -Command "(Get-Content 'latest.json') -replace 'YOUR_ACTUAL_SIGNATURE_FROM_MSI_SIG_FILE', '%SIGNATURE%' | Set-Content 'latest.json'"
-
-echo ✅ Updated latest.json successfully!
+echo Step 3: Build Complete!
 echo.
 
 echo ========================================
@@ -106,11 +94,11 @@ echo.
 echo Files created:
 echo 1. Win_Count_by_ArtYWoof_1.0.0_x64_en-US.msi
 echo 2. Win_Count_by_ArtYWoof_1.0.0_x64_en-US.msi.sig
-echo 3. latest.json (updated)
 echo.
 echo Next steps:
-echo 1. Upload files to GitHub Releases
-echo 2. Set correct URL in latest.json
+echo 1. Upload MSI file to GitHub Releases
+echo 2. GitHub will auto-generate latest.json
+echo 3. Copy signature from .sig file to GitHub Release
 echo.
 
 pause 

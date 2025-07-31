@@ -9,6 +9,13 @@
   font-style: normal;
 }
 
+@font-face {
+  font-family: 'MiSansThai';
+  src: url('/assets/fonts/MiSansThai.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 
 
 :root {
@@ -55,7 +62,7 @@ html, body {
   margin: 0px;
   padding: 0px;
   overflow: hidden;
-  font-family: 'MiSansThai-Normal', sans-serif;
+  font-family: 'MiSansThai', 'MiSansThai-Normal', sans-serif;
   display: flex;
   justify-content: center;
   align-items: center;
