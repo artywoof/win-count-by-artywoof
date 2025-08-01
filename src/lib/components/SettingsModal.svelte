@@ -1053,9 +1053,9 @@
     background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
     border: 1px solid #333;
     border-radius: 12px;
-    width: 98%;
-    max-width: 1200px;
-    max-height: 90vh;
+    width: 380px !important;
+    max-width: 380px !important;
+    max-height: calc(90vh - 88px);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
     animation: slideIn 0.3s ease-out;
     overflow: hidden;
@@ -1218,7 +1218,7 @@
     border: 1px solid #007AFF;
     border-radius: 4px;
     padding: 4px 8px;
-    font-family: monospace;
+    font-family: 'MiSansThai', sans-serif;
     font-size: 12px;
     color: #007AFF;
   }

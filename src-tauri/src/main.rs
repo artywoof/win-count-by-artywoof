@@ -576,6 +576,16 @@ pub struct HotkeyConfig {
     pub step_size: i32,
 }
 
+// Struct สำหรับข้อมูล Update
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateInfo {
+    pub available: bool,
+    pub version: String,
+    pub current_version: String,
+    pub body: String,
+    pub date: Option<String>,
+}
+
 impl Default for WinState {
     fn default() -> Self {
         Self {
@@ -1260,6 +1270,244 @@ fn check_hotkey_file() -> Result<String, String> {
     }
 }
 
+// Sound file management functions
+#[tauri::command]
+fn save_custom_sound(file_data: Vec<u8>, filename: String, sound_type: String) -> Result<(), String> {
+    let app_data_dir = get_app_data_dir()?;
+    let sounds_dir = app_data_dir.join("sounds");
+    
+    // Create sounds directory if it doesn't exist
+    if !sounds_dir.exists() {
+        fs::create_dir_all(&sounds_dir)
+            .map_err(|e| format!("Failed to create sounds directory: {}", e))?;
+    }
+    
+    let file_path = sounds_dir.join(&filename);
+    fs::write(&file_path, file_data)
+        .map_err(|e| format!("Failed to save sound file: {}", e))?;
+    
+    // Save metadata
+    let metadata = serde_json::json!({
+        "filename": filename,
+        "type": sound_type,
+        "saved_at": chrono::Utc::now().to_rfc3339()
+    });
+    
+    let metadata_path = app_data_dir.join(format!("sound_{}_metadata.json", sound_type));
+    fs::write(metadata_path, serde_json::to_string(&metadata).unwrap())
+        .map_err(|e| format!("Failed to save sound metadata: {}", e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn get_custom_sound_path(sound_type: String) -> Result<String, String> {
+    let app_data_dir = get_app_data_dir()?;
+    let metadata_path = app_data_dir.join(format!("sound_{}_metadata.json", sound_type));
+    
+    if metadata_path.exists() {
+        let metadata_str = fs::read_to_string(metadata_path)
+            .map_err(|_| "Failed to read sound metadata".to_string())?;
+        
+        let metadata: serde_json::Value = serde_json::from_str(&metadata_str)
+            .map_err(|_| "Invalid sound metadata format".to_string())?;
+        
+        let filename = metadata["filename"].as_str()
+            .ok_or("Invalid filename in metadata".to_string())?;
+        
+        let sound_path = app_data_dir.join("sounds").join(filename);
+        if sound_path.exists() {
+            Ok(sound_path.to_string_lossy().to_string())
+        } else {
+            Err("Sound file not found".to_string())
+        }
+    } else {
+        Err("No custom sound metadata found".to_string())
+    }
+}
+
+#[tauri::command]
+fn delete_custom_sound(sound_type: String) -> Result<(), String> {
+    let app_data_dir = get_app_data_dir()?;
+    let metadata_path = app_data_dir.join(format!("sound_{}_metadata.json", sound_type));
+    
+    if metadata_path.exists() {
+        let metadata_str = fs::read_to_string(&metadata_path)
+            .map_err(|_| "Failed to read sound metadata".to_string())?;
+        
+        let metadata: serde_json::Value = serde_json::from_str(&metadata_str)
+            .map_err(|_| "Invalid sound metadata format".to_string())?;
+        
+        let filename = metadata["filename"].as_str()
+            .ok_or("Invalid filename in metadata".to_string())?;
+        
+        // Delete sound file
+        let sound_path = app_data_dir.join("sounds").join(filename);
+        if sound_path.exists() {
+            fs::remove_file(&sound_path)
+                .map_err(|e| format!("Failed to delete sound file: {}", e))?;
+        }
+        
+        // Delete metadata
+        fs::remove_file(metadata_path)
+            .map_err(|e| format!("Failed to delete sound metadata: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn read_sound_file(file_path: String) -> Result<Vec<u8>, String> {
+    fs::read(&file_path)
+        .map_err(|e| format!("Failed to read sound file: {}", e))
+}
+
+#[tauri::command]
+fn get_custom_sound_filename(sound_type: String) -> Result<String, String> {
+    let app_data_dir = get_app_data_dir()?;
+    let metadata_path = app_data_dir.join(format!("sound_{}_metadata.json", sound_type));
+    
+    if metadata_path.exists() {
+        let metadata_str = fs::read_to_string(metadata_path)
+            .map_err(|_| "Failed to read sound metadata".to_string())?;
+        
+        let metadata: serde_json::Value = serde_json::from_str(&metadata_str)
+            .map_err(|_| "Invalid sound metadata format".to_string())?;
+        
+        let filename = metadata["filename"].as_str()
+            .ok_or("Invalid filename in metadata".to_string())?;
+        
+        Ok(filename.to_string())
+    } else {
+        Err("No custom sound metadata found".to_string())
+    }
+}
+
+// Auto-Update Commands
+#[tauri::command]
+async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+    println!("🔄 Checking for updates...");
+    
+    use tauri_plugin_updater::UpdaterExt;
+    
+    match app.updater() {
+        Ok(updater) => {
+            match updater.check().await {
+                Ok(update) => {
+                    if let Some(update) = update {
+                        println!("🎉 Update available: {}", update.version);
+                        
+                        let update_info = UpdateInfo {
+                            available: true,
+                            version: update.version.clone(),
+                            current_version: app.package_info().version.to_string(),
+                            body: update.body.clone().unwrap_or_default(),
+                            date: update.date.map(|d| d.to_string()),
+                        };
+                        
+                        // Emit event ให้ frontend
+                        let _ = app.emit("update-available", &update_info);
+                        
+                        Ok(update_info)
+                    } else {
+                        println!("✅ No updates available");
+                        Ok(UpdateInfo {
+                            available: false,
+                            version: app.package_info().version.to_string(),
+                            current_version: app.package_info().version.to_string(),
+                            body: "You are using the latest version".to_string(),
+                            date: None,
+                        })
+                    }
+                }
+                Err(e) => {
+                    println!("❌ Failed to check for updates: {}", e);
+                    Err(format!("Failed to check for updates: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to get updater: {}", e);
+            Err(format!("Updater not available: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String> {
+    println!("📥 Starting update download and installation...");
+    
+    use tauri_plugin_updater::UpdaterExt;
+    
+    match app.updater() {
+        Ok(updater) => {
+            match updater.check().await {
+                Ok(Some(update)) => {
+                    println!("📦 Downloading update: {}", update.version);
+                    
+                    // Emit download started event
+                    let _ = app.emit("update-download-started", ());
+                    
+                    // Download และ install
+                    match update.download_and_install(
+                        |chunk_length, content_length| {
+                            // Progress callback
+                            let progress = if let Some(total) = content_length {
+                                (chunk_length as f32 / total as f32 * 100.0) as u32
+                            } else {
+                                0
+                            };
+                            
+                            let _ = app.emit("update-download-progress", progress);
+                            println!("📥 Download progress: {}%", progress);
+                        },
+                        || {
+                            // Download finished callback
+                            let _ = app.emit("update-download-finished", ());
+                            println!("✅ Download completed, installing...");
+                        }
+                    ).await {
+                        Ok(_) => {
+                            println!("✅ Update installed successfully, restarting...");
+                            let _ = app.emit("update-installed", ());
+                            
+                            // Restart แอป
+                            app.restart();
+                            Ok(())
+                        }
+                        Err(e) => {
+                            println!("❌ Failed to download/install update: {}", e);
+                            let _ = app.emit("update-error", format!("Failed to install: {}", e));
+                            Err(format!("Failed to download/install update: {}", e))
+                        }
+                    }
+                }
+                Ok(None) => {
+                    Err("No updates available".to_string())
+                }
+                Err(e) => {
+                    println!("❌ Failed to check for updates: {}", e);
+                    Err(format!("Failed to check for updates: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to get updater: {}", e);
+            Err(format!("Updater not available: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn install_update_and_restart(app: tauri::AppHandle) -> Result<(), String> {
+    println!("🔄 Installing update and restarting...");
+    
+    // ฟังก์ชันนี้จะถูกเรียกหลังจากที่ download เสร็จแล้ว
+    // ใน Tauri v2 การ install จะทำอัตโนมัติใน download_and_install
+    app.restart();
+    Ok(())
+}
+
 fn start_http_server() {
     thread::spawn(move || {
         let rt = Runtime::new().unwrap();
@@ -1789,7 +2037,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file])
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();

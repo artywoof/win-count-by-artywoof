@@ -6,6 +6,7 @@
   import { invoke } from '@tauri-apps/api/core';
 
   import licenseManager from '$lib/licenseManager';
+  import { updateManager } from '$lib/updateManager';
 
   // State stores - these will be updated by Tauri events
   const win = writable(0);
@@ -45,6 +46,8 @@
   let soundEnabled = true;
   let customIncreaseSound: string | null = null;
   let customDecreaseSound: string | null = null;
+  let customIncreaseFileName: string | null = null;
+  let customDecreaseFileName: string | null = null;
   let audioUpCustom: HTMLAudioElement | null = null;
   let audioDownCustom: HTMLAudioElement | null = null;
   
@@ -95,6 +98,12 @@
   let operationError = false;
   let showResultModal = false;
   let resultMessage = '';
+
+  // Sound confirmation modals
+  let showDeleteSoundModal = false;
+  let soundToDelete: 'increase' | 'decrease' | null = null;
+  let showResetSoundModal = false;
+  let showResetHotkeyModal = false;
 
   // Settings functions
   function startHotkeyRecording(action: string) {
@@ -280,12 +289,64 @@
     }
   }
   
-  function handleSoundUpload(event: Event, type: 'increase' | 'decrease') {
+  async function handleSoundUpload(event: Event, type: 'increase' | 'decrease') {
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
     if (file) {
       console.log(`🔊 Sound upload: ${type} - ${file.name}`);
-      // Here you would normally save the file
+      
+      try {
+        // Read file as ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer();
+        const fileData = new Uint8Array(arrayBuffer);
+        
+        // Save file to backend using Tauri
+        await invoke('save_custom_sound', { 
+          fileData: Array.from(fileData), 
+          filename: file.name, 
+          soundType: type 
+        });
+        
+        // Create URL for the uploaded file
+        const fileUrl = URL.createObjectURL(file);
+        
+        if (type === 'increase') {
+          customIncreaseSound = fileUrl;
+          customIncreaseFileName = file.name;
+          
+          // Create new Audio object for custom increase sound
+          audioUpCustom = new Audio(fileUrl);
+          audioUpCustom.load();
+          
+          // Test the sound immediately
+          setTimeout(() => {
+            audioUpCustom?.play().catch(err => console.error('🔊 Error playing uploaded increase sound:', err));
+          }, 100);
+          
+          // Test the sound immediately
+          setTimeout(() => {
+            audioUpCustom?.play().catch(err => console.error('🔊 Error playing uploaded increase sound:', err));
+          }, 100);
+        } else if (type === 'decrease') {
+          customDecreaseSound = fileUrl;
+          customDecreaseFileName = file.name;
+          
+          // Create new Audio object for custom decrease sound
+          audioDownCustom = new Audio(fileUrl);
+          audioDownCustom.load();
+          
+          // Test the sound immediately
+          setTimeout(() => {
+            audioDownCustom?.play().catch(err => console.error('🔊 Error playing uploaded decrease sound:', err));
+          }, 100);
+        }
+        
+        // Clear the input for future uploads
+        target.value = '';
+        
+              } catch (error) {
+          console.error('❌ Failed to save sound file:', error);
+        }
     }
   }
   
@@ -1462,6 +1523,9 @@
     // Initialize Auto Update
     await checkForUpdates();
     
+    // Initialize Update Manager
+    updateManager.checkForUpdates();
+    
     // Check license status
     await checkLicenseStatus();
     
@@ -1473,6 +1537,57 @@
       if (savedDonateAmount) {
         donateAmount = savedDonateAmount;
         console.log('💰 Loaded donate amount from localStorage:', donateAmount);
+      
+      // Load custom sounds from backend
+      try {
+        const increasePath = await invoke('get_custom_sound_path', { soundType: 'increase' });
+        const decreasePath = await invoke('get_custom_sound_path', { soundType: 'decrease' });
+        
+        if (increasePath) {
+          try {
+            // Get the actual filename
+            const filename = await invoke('get_custom_sound_filename', { soundType: 'increase' }) as string;
+            
+            // Try to load the file using Tauri's invoke
+            const fileData = await invoke('read_sound_file', { filePath: increasePath }) as number[];
+            const blob = new Blob([new Uint8Array(fileData)], { type: 'audio/mpeg' });
+            const fileUrl = URL.createObjectURL(blob);
+            
+            customIncreaseSound = fileUrl;
+            customIncreaseFileName = filename;
+            audioUpCustom = new Audio(fileUrl);
+            audioUpCustom.load();
+            console.log('🔊 Custom increase sound loaded:', increasePath, 'filename:', filename);
+          } catch (loadError) {
+            console.error('❌ Failed to load custom increase sound:', loadError);
+            // Set filename to indicate custom sound exists but failed to load
+            customIncreaseFileName = 'เสียงเพิ่มที่กำหนดเอง (โหลดไม่สำเร็จ)';
+          }
+        }
+        if (decreasePath) {
+          try {
+            // Get the actual filename
+            const filename = await invoke('get_custom_sound_filename', { soundType: 'decrease' }) as string;
+            
+            // Try to load the file using Tauri's invoke
+            const fileData = await invoke('read_sound_file', { filePath: decreasePath }) as number[];
+            const blob = new Blob([new Uint8Array(fileData)], { type: 'audio/mpeg' });
+            const fileUrl = URL.createObjectURL(blob);
+            
+            customDecreaseSound = fileUrl;
+            customDecreaseFileName = filename;
+            audioDownCustom = new Audio(fileUrl);
+            audioDownCustom.load();
+            console.log('🔊 Custom decrease sound loaded:', decreasePath, 'filename:', filename);
+          } catch (loadError) {
+            console.error('❌ Failed to load custom decrease sound:', loadError);
+            // Set filename to indicate custom sound exists but failed to load
+            customDecreaseFileName = 'เสียงลดที่กำหนดเอง (โหลดไม่สำเร็จ)';
+          }
+        }
+      } catch (error) {
+        console.log('ℹ️ No custom sounds found:', error);
+      }
       }
       if (savedDonateWinCondition) {
         donateWinCondition = savedDonateWinCondition;
@@ -1836,7 +1951,7 @@
   <!-- Settings Modal -->
   {#if showSettingsModal}
     <div class="modal-backdrop" on:click={() => showSettingsModal = false} on:keydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="button" tabindex="0">
-      <div class="modal settings-modal" on:click|stopPropagation role="dialog" aria-labelledby="settings-title">
+      <div class="modal settings-modal {settingsTab === 'sound' ? 'sound-active' : ''} {settingsTab === 'general' ? 'general-active' : ''} {settingsTab === 'hotkey' ? 'hotkey-active' : ''}" on:click|stopPropagation role="dialog" aria-labelledby="settings-title">
         <div class="modal-header">
           <h3 id="settings-title">⚙️ ตั้งค่า</h3>
           <button class="modal-close" on:click={() => showSettingsModal = false}>×</button>
@@ -1864,7 +1979,7 @@
           </button>
         </div>
 
-        <div class="modal-body">
+        <div class="modal-body {settingsTab === 'sound' ? 'sound-modal-body' : ''}">
           {#if settingsTab === 'general'}
             <!-- General Settings -->
             <div class="settings-group">
@@ -1878,7 +1993,7 @@
                 </p>
                 
                 <div class="settings-actions">
-                  <button class="settings-btn update" on:click={checkForUpdates} disabled={isCheckingUpdate}>
+                  <button class="settings-btn update" on:click={() => updateManager.checkForUpdates()} disabled={isCheckingUpdate}>
                     {isCheckingUpdate ? '🔄 กำลังตรวจสอบ...' : '🔄 ตรวจสอบอัปเดต'}
                   </button>
                 </div>
@@ -1898,7 +2013,7 @@
           <div class="settings-group">
               <h4 class="settings-group-title">🎹 ปรับแต่งปุ่มลัด</h4>
               <p class="settings-note">
-                คลิกที่ปุ่มลัดเพื่อเปลี่ยน (รองรับปุ่มใดๆ และการรวม 3 ปุ่ม)
+                คลิกที่ปุ่มลัดเพื่อเปลี่ยน
               </p>
               
               <div class="hotkey-customization">
@@ -1945,13 +2060,13 @@
 
               <div class="settings-actions">
                     <button class="settings-btn reset" on:click={() => showResetConfirmModal = true}>
-                      🔄 รีเซ็ตคืนค่า
+                      🔄 รีเซ็ตปุ่มลัด
                     </button>
               </div>
             </div>
           {:else if settingsTab === 'sound'}
             <!-- Sound Customization -->
-          <div class="settings-group">
+          <div class="settings-group sound-tab-content">
               <h4 class="settings-group-title">🔊 ปรับแต่งเสียง</h4>
               
               <!-- Sound Toggle -->
@@ -1984,12 +2099,13 @@
                     📂 เลือกไฟล์
                   </label>
                   {#if customIncreaseSound}
-                        <button class="sound-btn test" on:click={() => audioUp?.play()}>▶️ ทดสอบ</button>
-                        <button class="sound-btn delete" on:click={() => {
-                          customIncreaseSound = null;
-                          audioUpCustom = null;
-                          uploadMessage = 'ลบเสียง increase แล้ว! ✅';
-                        }} title="ลบเสียงกำหนดเอง">🗑️ ลบ</button>
+                    <button class="sound-btn delete" on:click={() => {
+                      soundToDelete = 'increase';
+                      showDeleteSoundModal = true;
+                    }} title="ลบเสียงกำหนดเอง">ลบ</button>
+                  {/if}
+                  {#if customIncreaseFileName}
+                    <div class="file-name">📄 {customIncreaseFileName}</div>
                   {/if}
                 </div>
                 
@@ -2006,12 +2122,13 @@
                     📂 เลือกไฟล์
                   </label>
                   {#if customDecreaseSound}
-                        <button class="sound-btn test" on:click={() => audioDown?.play()}>▶️ ทดสอบ</button>
-                        <button class="sound-btn delete" on:click={() => {
-                          customDecreaseSound = null;
-                          audioDownCustom = null;
-                          uploadMessage = 'ลบเสียงกำหนดเองแล้ว! ✅';
-                        }} title="ลบเสียงกำหนดเอง">🗑️ ลบ</button>
+                    <button class="sound-btn delete" on:click={() => {
+                      soundToDelete = 'decrease';
+                      showDeleteSoundModal = true;
+                    }} title="ลบเสียงกำหนดเอง">ลบ</button>
+                  {/if}
+                  {#if customDecreaseFileName}
+                    <div class="file-name">📄 {customDecreaseFileName}</div>
                   {/if}
                 </div>
               </div>
@@ -2020,15 +2137,33 @@
               <div class="sound-test-section">
                     <h5 class="sound-section-title">🎵 ทดสอบเสียง</h5>
                 <div class="sound-test-controls">
-                      <button class="sound-btn test" on:click={() => audioUp?.play()}>🔊 เพิ่ม</button>
-                      <button class="sound-btn test" on:click={() => audioDown?.play()}>🔊 ลด</button>
+                      <button class="sound-btn test" on:click={() => {
+                        if (audioUpCustom) {
+                          audioUpCustom.play();
+                        } else {
+                          audioUp?.play();
+                        }
+                      }}>🔊 เพิ่ม</button>
+                      <button class="sound-btn test" on:click={() => {
+                        if (audioDownCustom) {
+                          audioDownCustom.play();
+                        } else {
+                          audioDown?.play();
+                        }
+                      }}>🔊 ลด</button>
             </div>
           </div>
               
-                  <!-- Upload Message -->
-                  {#if uploadMessage}
-                    <div class="upload-message">{uploadMessage}</div>
-                  {/if}
+              <!-- Sound Reset Controls -->
+              <div class="sound-reset-section">
+                <div class="sound-reset-controls">
+                  <button class="sound-btn reset" on:click={() => {
+                    showResetSoundModal = true;
+                  }} title="รีเซ็ตเสียงทั้งหมด">🔄 รีเซ็ตเสียง</button>
+                </div>
+              </div>
+              
+
             </div>
           {/if}
         </div>
@@ -2037,6 +2172,109 @@
             <div class="modal-footer">
   
             </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal ยืนยันลบเสียง -->
+  {#if showDeleteSoundModal}
+    <div class="modal-backdrop" on:click={() => showDeleteSoundModal = false} on:keydown={(e) => e.key === 'Escape' && (showDeleteSoundModal = false)} role="button" tabindex="0">
+      <div class="modal delete-sound-modal" on:click|stopPropagation role="dialog">
+        <div class="modal-header">
+          <h3>ยืนยันการลบเสียง</h3>
+        </div>
+        <div class="modal-body">
+          <div class="confirm-message">
+            <p>คุณแน่ใจหรือไม่ว่าต้องการลบเสียง{soundToDelete === 'increase' ? 'เพิ่ม' : 'ลด'}?</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="action-btn confirm" on:click={async () => {
+            try {
+              await invoke('delete_custom_sound', { soundType: soundToDelete });
+              if (soundToDelete === 'increase') {
+                customIncreaseSound = null;
+                customIncreaseFileName = null;
+                audioUpCustom = null;
+              } else {
+                customDecreaseSound = null;
+                customDecreaseFileName = null;
+                audioDownCustom = null;
+              }
+              showDeleteSoundModal = false;
+              soundToDelete = null;
+            } catch (error) {
+              console.error('❌ Failed to delete sound file:', error);
+            }
+          }}>ยืนยัน</button>
+          <button class="action-btn cancel" on:click={() => showDeleteSoundModal = false}>ยกเลิก</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal ยืนยันรีเซ็ตเสียง -->
+  {#if showResetSoundModal}
+    <div class="modal-backdrop" on:click={() => showResetSoundModal = false} on:keydown={(e) => e.key === 'Escape' && (showResetSoundModal = false)} role="button" tabindex="0">
+      <div class="modal reset-sound-modal" on:click|stopPropagation role="dialog">
+        <div class="modal-header">
+          <h3>ยืนยันการรีเซ็ตเสียง</h3>
+        </div>
+        <div class="modal-body">
+          <div class="confirm-message">
+            <p>คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตเสียงทั้งหมด?</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="action-btn confirm" on:click={async () => {
+            try {
+              // Delete both sound files
+              await invoke('delete_custom_sound', { soundType: 'increase' });
+              await invoke('delete_custom_sound', { soundType: 'decrease' });
+              
+              customIncreaseSound = null;
+              customDecreaseSound = null;
+              customIncreaseFileName = null;
+              customDecreaseFileName = null;
+              audioUpCustom = null;
+              audioDownCustom = null;
+              
+              showResetSoundModal = false;
+            } catch (error) {
+              console.error('❌ Failed to reset sound files:', error);
+            }
+          }}>ยืนยัน</button>
+          <button class="action-btn cancel" on:click={() => showResetSoundModal = false}>ยกเลิก</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal ยืนยันรีเซ็ตคืนค่า -->
+  {#if showResetConfirmModal}
+    <div class="modal-backdrop" on:click={() => showResetConfirmModal = false} on:keydown={(e) => e.key === 'Escape' && (showResetConfirmModal = false)} role="button" tabindex="0">
+      <div class="modal reset-hotkey-modal" on:click|stopPropagation role="dialog">
+        <div class="modal-header">
+          <h3>ยืนยันการรีเซ็ตคืนค่า</h3>
+        </div>
+        <div class="modal-body">
+          <div class="confirm-message">
+            <p>คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตคืนค่าคีย์ลัดทั้งหมด?</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="action-btn confirm" on:click={async () => {
+            try {
+              await invoke('clear_hotkeys');
+              await invoke('save_default_hotkeys');
+              await invoke('reload_hotkeys_command');
+              showResetConfirmModal = false;
+            } catch (error) {
+              console.error('❌ Failed to reset hotkeys:', error);
+            }
+          }}>ยืนยัน</button>
+          <button class="action-btn cancel" on:click={() => showResetConfirmModal = false}>ยกเลิก</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -2269,6 +2507,7 @@
     overflow: hidden;
     box-sizing: border-box;
     transform: translateX(-3px);
+    -webkit-app-region: drag;
   }
   .app-title-container {
     display: flex;
@@ -2277,6 +2516,7 @@
     gap: 12px;
     width: 100%;
     flex-shrink: 0;
+    -webkit-app-region: drag;
   }
 
   .app-title {
@@ -2289,6 +2529,7 @@
     letter-spacing: 0.02em;
     flex-shrink: 0;
     line-height: 1.1;
+    -webkit-app-region: drag;
   }
 
   .auto-update-btn {
@@ -2307,6 +2548,7 @@
     text-transform: uppercase;
     letter-spacing: 1px;
     flex-shrink: 0;
+    -webkit-app-region: drag;
   }
 
   .auto-update-btn:hover {
@@ -2455,7 +2697,6 @@
     padding: calc(776px * 0.019) calc(476px * 0.126); /* ~15px ~60px */
     cursor: pointer;
     transition: all 0.3s ease;
-    -webkit-app-region: no-drag;
     width: calc(476px * 0.92); /* 92% */
     max-width: 438px;
     margin-bottom: calc(776px * 0.013); /* ~10px */
@@ -2479,7 +2720,6 @@
     padding: calc(776px * 0.019) calc(476px * 0.126); /* ~15px ~60px */
     cursor: pointer;
     transition: all 0.3s ease;
-    -webkit-app-region: no-drag;
     width: calc(476px * 0.92); /* 92% */
     max-width: 438px;
     margin-bottom: calc(776px * 0.013); /* ~10px */
@@ -2532,7 +2772,7 @@
   }
   .toggle-knob {
     width: calc(776px * 0.038); /* เพิ่มขนาดจาก 0.032 เป็น 0.038 */
-    height: calc(776px * 0.038); /* เพิ่มขนาดจาก 0.032 เป็น 0.038 */
+    height: calc(776px * 0.038); /* เพิ่มขนาดจาก 0.038 */
     border-radius: 50%; background: #fff; position: absolute; 
     left: calc(776px * 0.007); /* ลดระยะห่างจากขอบ */
     top: calc(776px * 0.007); /* ลดระยะห่างจากขอบ */
@@ -2564,6 +2804,7 @@
     color: #00e5ff;
     font-size: calc(476px * 0.029 + 9px); /* ลดจาก +12px เป็น +9px */
     font-weight: 700; 
+    font-family: 'MiSansThai', sans-serif;
     padding: calc(776px * 0.016) calc(476px * 0.021); /* ~12px ~10px */
     width: calc(476px * 0.40); /* 40% ของ main-content */
     max-width: 190px;
@@ -2602,10 +2843,28 @@
 
   /* Settings Modal Styles */
   .settings-modal {
-    max-width: 500px;
-    max-height: 80vh;
+    width: 380px !important;
+    max-width: 380px !important;
+    max-height: calc(80vh - 88px);
     overflow-y: auto;
   }
+
+  /* แท็บเสียง - เพิ่มความสูง 48px */
+  .settings-modal.sound-active {
+    max-height: calc(80vh - -26px) !important;
+  }
+
+  /* แท็บทั่วไป - ลดความสูงลง 12px */
+  .settings-modal.general-active {
+    max-height: calc(80vh - 88px) !important;
+  }
+
+  /* แท็บปุ่มลัด - ลดความสูงลง 26px */
+  .settings-modal.hotkey-active {
+    max-height: calc(80vh - 114px) !important;
+  }
+
+
 
   .settings-tabs {
     display: flex;
@@ -2618,8 +2877,9 @@
     background: transparent;
     border: none;
     color: #00e5ff;
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 600;
+    font-family: 'MiSansThai', sans-serif;
     padding: 12px 16px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -2640,14 +2900,16 @@
   }
 
   .settings-group-title {
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 700;
+    font-family: 'MiSansThai', sans-serif;
     color: #00e5ff;
     margin-bottom: 12px;
   }
 
   .settings-note {
-    font-size: 14px;
+    font-size: 18px;
+    font-family: 'MiSansThai', sans-serif;
     color: rgba(255, 255, 255, 0.7);
     margin-bottom: 16px;
     line-height: 1.4;
@@ -2669,7 +2931,7 @@
   }
 
   .hotkey-label {
-    font-size: 16px;
+    font-size: 20px;
     color: #ffffff;
     font-weight: 500;
     min-width: 120px;
@@ -2680,7 +2942,7 @@
     border: 2px solid #00e5ff;
     border-radius: 8px;
     color: #00e5ff;
-    font-size: 14px;
+    font-size: 18px;
     font-weight: 600;
     padding: 8px 12px;
     cursor: pointer;
@@ -2717,17 +2979,18 @@
   }
 
   .sound-toggle-label {
-    font-size: 16px;
+    font-size: 20px;
     color: #ffffff;
     font-weight: 500;
   }
 
   .sound-upload-section {
     margin-bottom: 24px;
+    margin-top: -22px !important;
   }
 
   .sound-section-title {
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 600;
     color: #00e5ff;
     margin-bottom: 12px;
@@ -2742,7 +3005,7 @@
   }
 
   .sound-upload-label {
-    font-size: 14px;
+    font-size: 18px;
     color: #ffffff;
     font-weight: 500;
     min-width: 80px;
@@ -2757,7 +3020,7 @@
     border: 2px solid #00e5ff;
     border-radius: 6px;
     color: #00e5ff;
-    font-size: 12px;
+    font-size: 16px;
     font-weight: 600;
     padding: 6px 12px;
     cursor: pointer;
@@ -2774,7 +3037,7 @@
     border: 2px solid #00e5ff;
     border-radius: 6px;
     color: #00e5ff;
-    font-size: 12px;
+    font-size: 16px;
     font-weight: 600;
     padding: 6px 12px;
     cursor: pointer;
@@ -2794,6 +3057,7 @@
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
+    justify-content: center;
   }
 
   .sound-btn.test {
@@ -2801,8 +3065,9 @@
     border: 2px solid #00e5ff;
     border-radius: 6px;
     color: #00e5ff;
-    font-size: 12px;
+    font-size: 18px;
     font-weight: 600;
+    font-family: 'MiSansThai', sans-serif;
     padding: 6px 12px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -2811,6 +3076,566 @@
   .sound-btn.test:hover {
     background: rgba(0, 229, 255, 0.1);
     transform: translateY(-1px);
+  }
+
+  /* Confirmation modals */
+  .delete-sound-modal,
+  .reset-sound-modal {
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+    border: 2px solid #00e5ff;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 229, 255, 0.4), 0 0 0 1px rgba(0, 229, 255, 0.1);
+    backdrop-filter: blur(20px);
+    max-width: 420px;
+    width: 90%;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .delete-sound-modal::before,
+  .reset-sound-modal::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(0, 229, 255, 0.05) 50%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .delete-sound-modal .modal-header,
+  .reset-sound-modal .modal-header {
+    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 50%, #0077aa 100%);
+    color: #0f0f23;
+    border-radius: 14px 14px 0 0;
+    padding: 20px 24px;
+    border-bottom: 2px solid #00e5ff;
+    position: relative;
+    z-index: 1;
+  }
+
+  .delete-sound-modal .modal-header h3,
+  .reset-sound-modal .modal-header h3 {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    color: #0f0f23;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .delete-sound-modal .modal-body,
+  .reset-sound-modal .modal-body {
+    padding: 32px 24px;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .confirm-message {
+    margin-top: 24px;
+  }
+
+  .confirm-message p {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 18px;
+    color: #ffffff;
+    margin: 0;
+    line-height: 1.6;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  .delete-sound-modal .modal-footer,
+  .reset-sound-modal .modal-footer {
+    padding: 20px 24px;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    border-top: 1px solid rgba(0, 229, 255, 0.2);
+    position: relative;
+    z-index: 1;
+  }
+
+  .delete-sound-modal .action-btn,
+  .reset-sound-modal .action-btn {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 24px;
+    border-radius: 8px;
+    border: 2px solid;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 100px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .delete-sound-modal .action-btn::before,
+  .reset-sound-modal .action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+  }
+
+  .delete-sound-modal .action-btn:hover::before,
+  .reset-sound-modal .action-btn:hover::before {
+    left: 100%;
+  }
+
+  .delete-sound-modal .action-btn.cancel,
+  .reset-sound-modal .action-btn.cancel {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ff5252 100%);
+    border-color: #ff6b6b;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  }
+
+  .delete-sound-modal .action-btn.cancel:hover,
+  .reset-sound-modal .action-btn.cancel:hover {
+    background: linear-gradient(135deg, #ff5252 0%, #ff4444 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+  }
+
+  .delete-sound-modal .action-btn.confirm,
+  .reset-sound-modal .action-btn.confirm {
+    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 100%);
+    border-color: #00e5ff;
+    color: #0f0f23;
+    box-shadow: 0 4px 12px rgba(0, 229, 255, 0.3);
+  }
+
+  .delete-sound-modal .action-btn.confirm:hover,
+  .reset-sound-modal .action-btn.confirm:hover {
+    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 229, 255, 0.4);
+  }
+
+  /* Reset hotkey modal */
+  .reset-hotkey-modal {
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+    border: 2px solid #00e5ff;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 229, 255, 0.4), 0 0 0 1px rgba(0, 229, 255, 0.1);
+    backdrop-filter: blur(20px);
+    max-width: 420px;
+    width: 90%;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .reset-hotkey-modal::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(0, 229, 255, 0.05) 50%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .reset-hotkey-modal .modal-header {
+    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 50%, #0077aa 100%);
+    color: #0f0f23;
+    border-radius: 14px 14px 0 0;
+    padding: 20px 24px;
+    border-bottom: 2px solid #00e5ff;
+    position: relative;
+    z-index: 1;
+  }
+
+  .reset-hotkey-modal .modal-header h3 {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    color: #0f0f23;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .reset-hotkey-modal .modal-body {
+    padding: 32px 24px;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .reset-hotkey-modal .modal-footer {
+    padding: 20px 24px;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    border-top: 1px solid rgba(0, 229, 255, 0.2);
+    position: relative;
+    z-index: 1;
+  }
+
+  .reset-hotkey-modal .action-btn {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 24px;
+    border-radius: 8px;
+    border: 2px solid;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 100px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .reset-hotkey-modal .action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+  }
+
+  .reset-hotkey-modal .action-btn:hover::before {
+    left: 100%;
+  }
+
+  .reset-hotkey-modal .action-btn.cancel {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ff5252 100%);
+    border-color: #ff6b6b;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  }
+
+  .reset-hotkey-modal .action-btn.cancel:hover {
+    background: linear-gradient(135deg, #ff5252 0%, #ff4444 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+  }
+
+  .reset-hotkey-modal .action-btn.confirm {
+    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 100%);
+    border-color: #00e5ff;
+    color: #0f0f23;
+    box-shadow: 0 4px 12px rgba(0, 229, 255, 0.3);
+  }
+
+  .reset-hotkey-modal .action-btn.confirm:hover {
+    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 229, 255, 0.4);
+  }
+
+  /* Update Modal Styles */
+  .update-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 20px;
+  }
+
+  .update-modal-content {
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+    border: 2px solid #00e5ff;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 229, 255, 0.4);
+    backdrop-filter: blur(20px);
+    max-width: 500px;
+    width: 90%;
+    padding: 32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .update-modal-content::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(0, 229, 255, 0.05) 50%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .update-modal-content h3 {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #00e5ff;
+    margin: 0 0 20px 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  .update-modal-content p {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 16px;
+    color: #ffffff;
+    margin: 8px 0;
+    line-height: 1.5;
+  }
+
+  .update-modal-content strong {
+    color: #00e5ff;
+  }
+
+  .update-body {
+    background: rgba(0, 229, 255, 0.1);
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 20px 0;
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 14px;
+    color: #ffffff;
+    line-height: 1.4;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .update-actions {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 24px;
+  }
+
+  .update-btn-download,
+  .update-btn-later {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 24px;
+    border-radius: 8px;
+    border: 2px solid;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 120px;
+  }
+
+  .update-btn-download {
+    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 100%);
+    border-color: #00e5ff;
+    color: #0f0f23;
+    box-shadow: 0 4px 12px rgba(0, 229, 255, 0.3);
+  }
+
+  .update-btn-download:hover {
+    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 229, 255, 0.4);
+  }
+
+  .update-btn-later {
+    background: transparent;
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+  }
+
+  .update-btn-later:hover {
+    background: rgba(255, 107, 107, 0.1);
+    transform: translateY(-2px);
+  }
+
+  /* Restart Modal */
+  .restart-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 20px;
+  }
+
+  .restart-modal-content {
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+    border: 2px solid #00e5ff;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 229, 255, 0.4);
+    backdrop-filter: blur(20px);
+    max-width: 400px;
+    width: 90%;
+    padding: 32px;
+    text-align: center;
+  }
+
+  .restart-modal-content h3 {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #00e5ff;
+    margin: 0 0 20px 0;
+  }
+
+  .restart-modal-content p {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 16px;
+    color: #ffffff;
+    margin: 8px 0;
+    line-height: 1.5;
+  }
+
+  /* Toast Notifications */
+  .toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10000;
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 14px;
+    max-width: 300px;
+    animation: slideIn 0.3s ease-out;
+  }
+
+  .toast-success {
+    background-color: #28a745;
+    color: white;
+  }
+
+  .toast-error {
+    background-color: #dc3545;
+    color: white;
+  }
+
+  .toast-info {
+    background-color: #007AFF;
+    color: white;
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  /* Progress Bar */
+  .update-progress-bar {
+    width: 0%;
+    height: 4px;
+    background: linear-gradient(90deg, #00e5ff 0%, #0099cc 100%);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .update-progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
+
+
+
+  .sound-reset-section {
+    margin-top: 20px;
+  }
+
+  .sound-reset-controls {
+    display: flex;
+    justify-content: center;
+  }
+
+  .sound-btn.reset {
+    background: transparent;
+    border: 2px solid #ff6b6b;
+    border-radius: 6px;
+    color: #ff6b6b;
+    font-size: 20px;
+    font-weight: 600;
+    font-family: 'MiSansThai', sans-serif;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .sound-btn.reset:hover {
+    background: rgba(255, 107, 107, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .sound-btn.delete {
+    background: transparent;
+    border: 2px solid #ff6b6b;
+    border-radius: 6px;
+    color: #ff6b6b;
+    font-size: 20px;
+    font-weight: 600;
+    font-family: 'MiSansThai', sans-serif;
+    padding: 4px 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-left: 8px;
+  }
+
+  .sound-btn.delete:hover {
+    background: rgba(255, 107, 107, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .file-name {
+    font-size: 16px;
+    color: #00e5ff;
+    font-family: 'MiSansThai', sans-serif;
+    margin-top: 0px;
+    padding: 6px 20px;
+    background: rgba(0, 229, 255, 0.1);
+    border-radius: 4px;
+    border: 1px solid rgba(0, 229, 255, 0.3);
+  }
+
+  .upload-message {
+    background: rgba(0, 229, 255, 0.1);
+    border: 1px solid #00e5ff;
+    border-radius: 8px;
+    color: #00e5ff;
+    padding: 12px 16px;
+    margin-top: 16px;
+    text-align: center;
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
   }
 
   .settings-actions {
@@ -2822,13 +3647,15 @@
   .settings-btn.reset {
     background: transparent;
     border: 2px solid #ff6b6b;
-    border-radius: 8px;
+    border-radius: 6px;
     color: #ff6b6b;
-    font-size: 14px;
+    font-size: 20px;
     font-weight: 600;
-    padding: 10px 20px;
+    font-family: 'MiSansThai', sans-serif;
+    padding: 8px 16px;
     cursor: pointer;
     transition: all 0.3s ease;
+    margin-top: 6px;
   }
 
   .settings-btn.reset:hover {
@@ -2841,8 +3668,9 @@
     border: 2px solid #00e5ff;
     border-radius: 8px;
     color: #00e5ff;
-    font-size: 14px;
+    font-size: 20px;
     font-weight: 600;
+    font-family: 'MiSansThai', sans-serif;
     padding: 10px 20px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -2866,6 +3694,7 @@
     color: #00e5ff;
     font-size: 14px;
     font-weight: 600;
+    font-family: 'MiSansThai', sans-serif;
     padding: 10px 20px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -2884,6 +3713,7 @@
     color: #00e5ff;
     font-size: 14px;
     font-weight: 600;
+    font-family: 'MiSansThai', sans-serif;
     padding: 10px 20px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -2896,24 +3726,18 @@
 
   /* Modal Styles */
   .modal-backdrop {
-    position: absolute;
-    top: 10px;
+    position: fixed;
+    top: 0;
     left: 0;
     right: 0;
-    margin: 0 auto;
-    width: 476px;
-    height: 776px;
-    background: rgba(0, 0, 0, 0.03);
-    backdrop-filter: blur(4px); /* ลด blur เหลือ 4px */
-    border-radius: 28px; /* ปรับให้ตรงกับ main-content */
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 9999;
-    -webkit-app-region: no-drag;
-    overflow: hidden;
-    padding: 0;
-    transform: translateX(-3px); /* เพิ่ม transform เหมือน main-content */
+    padding: 20px;
   }
   .modal-backdrop::before {
     content: none;
@@ -2925,11 +3749,10 @@
     border-radius: 16px;
     padding: 0;
     max-width: 90vw;
-    max-height: 90vh;
+    max-height: calc(90vh - 140px);
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0, 229, 255, 0.3);
     backdrop-filter: blur(16px);
-    -webkit-app-region: no-drag;
   }
 
   .modal-header {
@@ -2953,11 +3776,11 @@
     color: #00e5ff;
     font-size: 24px;
     font-weight: 600;
+    font-family: 'MiSansThai', sans-serif;
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 6px;
     transition: all 0.3s ease;
-    -webkit-app-region: no-drag;
   }
 
   .modal-close:hover {
@@ -2967,6 +3790,12 @@
 
   .modal-body {
     padding: 20px 24px 24px 24px;
+    margin-top: -24px;
+  }
+
+  /* แท็บเสียง - ลดความสูงลง 32px */
+  .sound-modal-body {
+    max-height: calc(100% - 32px) !important;
   }
 
   /* Preset Modal Styles - ใช้โครงสร้างเหมือน Settings Modal */
@@ -3084,7 +3913,7 @@
   }
   .preset-name {
     font-size: inherit;
-    font-family: inherit;
+    font-family: 'MiSansThai', sans-serif;
     font-weight: inherit;
     color: inherit;
     letter-spacing: 0.5px;
@@ -3544,7 +4373,7 @@
     border-radius: 12px;
     text-align: center;
     letter-spacing: 2px;
-    font-family: 'Courier New', monospace;
+    font-family: 'MiSansThai', sans-serif;
     color: #ffffff;
     transition: all 0.3s ease;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
@@ -3989,31 +4818,7 @@
   </div>
 {/if}
 
-<!-- Reset Confirmation Modal -->
-{#if showResetConfirmModal}
-  <div class="modal-backdrop" on:click={() => showResetConfirmModal = false}>
-    <div class="modal reset-confirm-modal" on:click|stopPropagation>
-      <div class="modal-header">
-        <h3>🔄 ยืนยันการรีเซ็ต</h3>
-        <button class="modal-close" on:click={() => showResetConfirmModal = false}>×</button>
-      </div>
-      <div class="modal-body" style="padding: 20px 24px;">
-        <p style="margin: 0 0 20px 0; color: #fff; font-size: 16px;">คุณต้องการรีเซ็ตคีย์ลัดเป็นค่าเริ่มต้นหรือไม่?</p>
-        <div class="modal-actions" style="display: flex; gap: 10px; justify-content: center;">
-          <button class="settings-btn reset" on:click={async () => {
-            showResetConfirmModal = false;
-            await resetHotkeys();
-          }}>
-            ยืนยัน
-          </button>
-          <button class="settings-btn secondary" on:click={() => showResetConfirmModal = false}>
-            ยกเลิก
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+
 
 <!-- Result Modal -->
   {#if showResultModal}

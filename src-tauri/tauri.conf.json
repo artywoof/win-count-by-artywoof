@@ -55,8 +55,8 @@
       "endpoints": [
         "https://github.com/artywoof/win-count-by-artywoof/releases/latest/download/latest.json"
       ],
-      "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ1NUQzQjdBNUMyRTRGRjUKUldUMVR5NWNlanRkMWRaaXUyS0JqNGJYakdxSUpTUzkyTUFQdEdrc0JkbWZObFUweEp5Y1BxakwK"
+      "dialog": false,
+      "pubkey": "RWTS2shM0SQzI2EcfQLKZO/itZ1k+FvTpV36EYP5HCbD+YOa/lNdJH6K"
     },
     "globalShortcut": {
       "shortcuts": []
@@ -65,15 +65,39 @@
   "bundle": {
     "active": true,
     "targets": ["msi"],
+    "publisher": "ArtYWoof",
+    "copyright": "Copyright © 2024 ArtYWoof. All rights reserved.",
+    "category": "Utility",
+    "shortDescription": "Win Counter for TikTok Live Streamers",
+    "longDescription": "A powerful and lightweight win counter application designed specifically for TikTok Live streamers. Features include real-time overlay, customizable hotkeys, and automatic win tracking.",
     "icon": [
       "icons/32x32.png",
-      "icons/128x128.png",
+      "icons/128x128.png", 
       "icons/128x128@2x.png",
       "icons/icon.png",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../static"
-    ]
+    "resources": ["../static"],
+    "externalBin": [],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "tsp": false,
+      "wix": {
+        "language": ["en-US"],
+        "template": null,
+        "fragmentPaths": [],
+        "componentRefs": [],
+        "featureRefs": [],
+        "mergeRefs": [],
+        "skipWebviewInstall": false,
+        "license": null,
+        "enableElevatedUpdateInstall": true,
+        "bannerPath": null,
+        "dialogImagePath": null
+      },
+      "nsis": null
+    }
   }
 }

@@ -1,7 +1,13 @@
 {
 	"name": "win-count-by-artywoof",
 	"private": true,
-	  "version": "1.0.0",
+	"version": "1.0.0",
+	"description": "Win Counter for TikTok Live Streamers by ArtYWoof",
+	"author": "ArtYWoof",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/artywoof/win-count-by-artywoof.git"
+	},
 	"type": "module",
 	"scripts": {
 		"dev": "tauri dev",
@@ -16,7 +22,11 @@
 		"lint": "prettier --check .",
 		"dev:all": "bun dev",
 		"test:overlay": "start-server-and-test dev:all http://localhost:5173 bunx playwright test",
-		"tauri": "tauri"
+		"tauri": "tauri",
+	"release": "bun run release:patch",
+	"release:patch": "bun version patch && git push && git push --tags",
+	"release:minor": "bun version minor && git push && git push --tags",
+	"release:major": "bun version major && git push && git push --tags"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.53.1",

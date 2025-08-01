@@ -1,38 +1,37 @@
-# sv
+# 🎮 Win Count by ArtYWoof
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A powerful win counter application designed for TikTok Live streamers.
 
-## Creating a project
+## ✨ Features
 
-If you're seeing this, you've probably already done this step. Congrats!
+- 🎯 Real-time win counting with overlay
+- ⌨️ Customizable hotkeys
+- 🎨 Multiple themes and visual effects
+- 📱 System tray integration
+- 🔄 Auto-update functionality
+- 💾 Multiple presets support
 
-```bash
-# create a new project in the current directory
-npx sv create
+## 📥 Download
 
-# create a new project in my-app
-npx sv create my-app
-```
+Download the latest version from [Releases](https://github.com/artywoof/win-count-by-artywoof/releases/latest)
 
-## Developing
+## 🔄 Auto-Update
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+The app automatically checks for updates and will notify you when new versions are available.
 
-```bash
-npm run dev
+## 🛠️ Development
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+Built with:
+- Tauri v2
+- Rust
+- Svelte
+- TypeScript
+- Tailwind CSS
 
-## Building
+## 📄 License
 
-To create a production version of your app:
+MIT License - see [LICENSE](LICENSE) file for details.
 
-```bash
-npm run build
-```
+## 👤 Author
 
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+**ArtYWoof** - TikTok Live Streamer & Developer 

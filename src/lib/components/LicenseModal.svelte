@@ -294,7 +294,7 @@
   
   .detail-value {
     color: #212529;
-    font-family: 'Courier New', monospace;
+    font-family: 'MiSansThai', sans-serif;
   }
   
   .trial-warning {
@@ -344,7 +344,7 @@
     border: 2px solid #dee2e6;
     border-radius: 8px;
     font-size: 16px;
-    font-family: 'Courier New', monospace;
+    font-family: 'MiSansThai', sans-serif;
     text-align: center;
     letter-spacing: 2px;
     transition: all 0.3s ease;

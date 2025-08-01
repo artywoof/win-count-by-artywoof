@@ -1,10 +1,49 @@
+# Minisign private keys - อย่า commit!
+keys/minisign.key
+keys/*.key
+*.key
+password.txt
+backup/
+
+# Tauri build artifacts
+target/
+dist/
+build/
+
+# Log files
+*.log
+
+# OS generated files
 .DS_Store
-node_modules
-/build
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Node modules (ถ้ามี)
+node_modules/
+
+# Bun lockfile binary (เก็บไว้)
+!bun.lockb
+
+# SvelteKit
 /.svelte-kit
 /package
+
+# Environment files
 .env
 .env.*
 !.env.example
+
+# Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
