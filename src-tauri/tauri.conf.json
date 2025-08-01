@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Win_Count_by_ArtYWoof",
+  "productName": "Win Count by ArtYWoof",
   "version": "1.0.0",
   "identifier": "com.artywoof.wincount",
   "build": {
@@ -66,38 +66,19 @@
     "active": true,
     "targets": ["msi"],
     "publisher": "ArtYWoof",
-    "copyright": "Copyright © 2024 ArtYWoof. All rights reserved.",
+    "copyright": "Copyright © 2025 ArtYWoof",
     "category": "Utility",
-    "shortDescription": "Win Counter for TikTok Live Streamers",
-    "longDescription": "A powerful and lightweight win counter application designed specifically for TikTok Live streamers. Features include real-time overlay, customizable hotkeys, and automatic win tracking.",
+    "shortDescription": "Win Counter for Streamers",
+    "longDescription": "A powerful win counter application designed for TikTok Live streamers",
     "icon": [
       "icons/32x32.png",
-      "icons/128x128.png", 
+      "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png",
       "icons/icon.ico"
     ],
-    "resources": ["../static"],
-    "externalBin": [],
-    "windows": {
-      "certificateThumbprint": null,
-      "digestAlgorithm": "sha256",
-      "timestampUrl": "",
-      "tsp": false,
-      "wix": {
-        "language": ["en-US"],
-        "template": null,
-        "fragmentPaths": [],
-        "componentRefs": [],
-        "featureRefs": [],
-        "mergeRefs": [],
-        "skipWebviewInstall": false,
-        "license": null,
-        "enableElevatedUpdateInstall": true,
-        "bannerPath": null,
-        "dialogImagePath": null
-      },
-      "nsis": null
-    }
+    "resources": [
+      "../static"
+    ]
   }
 }
