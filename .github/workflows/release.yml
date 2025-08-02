@@ -64,12 +64,23 @@ jobs:
             
             **🚀 Auto-update enabled!**
 
+      - name: 🗑️ Remove Source Code Assets
+        run: |
+          # ลบ source code assets หลังจาก release
+          gh release view ${{ steps.get_version.outputs.VERSION }} --json assets --jq '.assets[].name' | grep -E '\.(zip|tar\.gz)$' | while read asset; do
+            echo "Deleting source code asset: $asset"
+            gh release delete-asset ${{ steps.get_version.outputs.VERSION }} "$asset" --yes
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: ✅ Release Summary
         run: |
           echo "🎉 Release ${{ steps.get_version.outputs.VERSION }} completed!"
           echo "📦 MSI installer created successfully"
           echo "🔐 Digital signature applied"
           echo "📄 latest.json generated for auto-update"
+          echo "🗑️ Source code assets removed"
           echo "🔗 Download: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.VERSION }}"
           echo ""
           echo "✅ Auto-update is now enabled!"
