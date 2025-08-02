@@ -20,6 +20,9 @@ use std::env;
 use std::process::Command;
 use sha2::{Sha256, Digest};
 
+// เพิ่ม license module
+mod license;
+use license::*;
 
 #[cfg(windows)]
 use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
@@ -1580,6 +1583,32 @@ async fn install_update_and_restart(app: tauri::AppHandle) -> Result<(), String>
     return Ok(());
 }
 
+// เพิ่ม License Commands ใหม่
+#[tauri::command]
+async fn get_machine_id_command() -> Result<String, String> {
+    license::get_machine_id()
+}
+
+#[tauri::command]
+async fn activate_license_command(license_key: String) -> Result<LicenseInfo, String> {
+    license::activate_license(&license_key).await
+}
+
+#[tauri::command]
+async fn check_license_command() -> Result<LicenseInfo, String> {
+    license::load_license()
+}
+
+#[tauri::command]
+async fn verify_license_command() -> Result<bool, String> {
+    license::check_license_status().await
+}
+
+#[tauri::command]
+async fn remove_license_command() -> Result<(), String> {
+    license::remove_license()
+}
+
 fn start_http_server() {
     thread::spawn(move || {
         let rt = Runtime::new().unwrap();
@@ -2111,7 +2140,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
 
-        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart])
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart, get_machine_id_command, activate_license_command, check_license_command, verify_license_command, remove_license_command])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();

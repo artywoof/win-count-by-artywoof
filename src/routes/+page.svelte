@@ -4,9 +4,15 @@
   import { browser } from '$app/environment';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { invoke } from '@tauri-apps/api/core';
+  import LicenseModal from '$lib/components/LicenseModal.svelte';
 
   import licenseManager from '$lib/licenseManager';
   import { updateManager } from '$lib/updateManager';
+
+  // License checking state
+  let isLicenseValid = false;
+  let showLicenseModal = false;
+  let isCheckingLicense = true;
 
   // State stores - these will be updated by Tauri events
   const win = writable(0);
@@ -390,8 +396,6 @@
   }
   
   // License state
-  let showLicenseModal = false;
-  let isLicenseValid = false;
   let licenseStatusMessage = '';
   let licenseKeyInput = '';
   let licenseError = '';
@@ -400,47 +404,32 @@
   
   async function checkLicenseStatus() {
     try {
-      // Wait for license manager to be ready
-      while (!licenseManager.isReady()) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      // เช็คว่ามี license หรือไม่
+      const license = await invoke('check_license_command');
       
-      isLicenseValid = licenseManager.isLicenseValid();
-      licenseStatusMessage = licenseManager.getStatusMessage();
+      // ตรวจสอบ license กับ server
+      const isValid = await invoke('verify_license_command');
       
-      // Only log if license is valid, otherwise it's expected behavior
-      if (isLicenseValid) {
-        console.log('🔑 License status:', licenseStatusMessage);
-        isAppReady = true; // อนุญาตให้แสดงแอพหลัก
+      if (isValid) {
+        isLicenseValid = true;
+        isAppReady = true;
+        console.log('🔑 License is valid');
       } else {
-        console.log('🔑 License not activated yet - this is normal for first-time users');
-        
-        // Check if this is the first time (no license file exists)
-        try {
-          const existingLicense = await invoke('get_license_key');
-          if (!existingLicense) {
-            // First time user - show license modal
-            showLicenseModal = true;
-          } else {
-            // License exists but invalid - allow app to run anyway
-            console.log('🔑 License exists but invalid - allowing app to run');
-            isAppReady = true;
-          }
-        } catch (error) {
-          // No license file - first time user
-          console.log('🔑 No license file found - first time user');
-          showLicenseModal = true;
-        }
+        showLicenseModal = true;
+        console.log('🔑 License not valid - showing modal');
       }
     } catch (error) {
-      console.warn('⚠️ License check failed (this is normal for first-time users):', error);
-      isLicenseValid = false;
-      licenseStatusMessage = 'ยังไม่ได้เปิดใช้งาน License';
-      
-      // Allow app to run even if license check fails
-      console.log('🔑 License check failed - allowing app to run anyway');
-      isAppReady = true;
+      console.log('No valid license found');
+      showLicenseModal = true;
+    } finally {
+      isCheckingLicense = false;
     }
+  }
+  
+  function onLicenseValid() {
+    isLicenseValid = true;
+    showLicenseModal = false;
+    isAppReady = true;
   }
   
   function openLicenseModal() {
@@ -629,6 +618,8 @@
       showNotification(`❌ ไม่สามารถลบ Preset "${presetName}" ได้: ${errorMessage}`);
     }
   }
+
+
 
   // Initialize Tauri connection and load initial state
   async function initializeTauri() {
@@ -1517,6 +1508,9 @@
   onMount(async () => {
     console.log('🚀 App initializing...');
     
+    // Check license status first
+    await checkLicenseStatus();
+    
     // Load custom hotkeys from localStorage
     if (typeof localStorage !== 'undefined') {
       const savedHotkeys = localStorage.getItem('customHotkeys');
@@ -1862,17 +1856,28 @@
   <source src="/assets/sfx/decrease.mp3" type="audio/mpeg" />
 </audio>
 
-<div class="control-app">
-  <!-- Window Controls -->
-  <div class="window-controls-left">
-    <button on:click={minimize_app} class="window-btn minimize-btn" title="Minimize">−</button>
+{#if isCheckingLicense}
+  <div class="loading-screen">
+    <div class="spinner"></div>
+    <h2>🔍 ตรวจสอบ License...</h2>
   </div>
-  <div class="window-controls-right">
-    <button on:click={hide_to_tray} class="window-btn close-btn" title="Hide to Tray">×</button>
-  </div>
+{:else if !isLicenseValid && showLicenseModal}
+  <LicenseModal 
+    isOpen={showLicenseModal} 
+    onLicenseValid={onLicenseValid}
+  />
+{:else}
+  <div class="control-app">
+    <!-- Window Controls -->
+    <div class="window-controls-left">
+      <button on:click={minimize_app} class="window-btn minimize-btn" title="Minimize">−</button>
+    </div>
+    <div class="window-controls-right">
+      <button on:click={hide_to_tray} class="window-btn close-btn" title="Hide to Tray">×</button>
+    </div>
 
-  <!-- Main Content -->
-  {#if isAppReady}
+    <!-- Main Content -->
+    {#if isAppReady}
   <div class="main-content">
     <!-- App Title -->
     <div class="app-title-container">
@@ -5083,6 +5088,34 @@
     animation: shake 0.5s ease-in-out;
   }
 
+  .loading-screen {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%);
+  }
+  
+  .loading-screen .spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #334155;
+    border-top: 5px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+  }
+  
+  .loading-screen h2 {
+    color: #e2e8f0;
+    margin: 0;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 
 </style>
 

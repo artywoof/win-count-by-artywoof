@@ -2184,6 +2184,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "machine-uid"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26141aceb9f046065617266f41a4a652e4583da643472a10a89b4b3664d99eb6"
+dependencies = [
+ "winreg 0.11.0",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5304,9 +5313,12 @@ dependencies = [
 name = "win-count-by-artywoof"
 version = "1.0.1"
 dependencies = [
+ "base64 0.21.7",
  "chrono",
  "dirs 5.0.1",
  "futures-util",
+ "hex",
+ "machine-uid",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
@@ -5321,6 +5333,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tungstenite",
+ "uuid",
  "winapi",
 ]
 
@@ -5793,6 +5806,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74c7b26e3480b707944fc872477815d29a8e429d2f93a1ce000f5fa84a15cbcd"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winreg"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76a1a57ff50e9b408431e8f97d5456f2807f8eb2a2cd79b06068fc87f8ecf189"
+dependencies = [
+ "cfg-if",
+ "winapi",
 ]
 
 [[package]]

@@ -1,479 +1,321 @@
-<script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  import licenseManager, { type LicenseInfo } from '$lib/licenseManager';
+<!-- src/lib/components/LicenseModal.svelte -->
+<script>
+  import { invoke } from '@tauri-apps/api/core';
+  import { onMount } from 'svelte';
   
-  const dispatch = createEventDispatcher();
-  
-  export let isOpen = false;
+  export let isOpen = true;
+  export let onLicenseValid = () => {};
   
   let licenseKey = '';
+  let machineId = '';
   let isActivating = false;
-  let activationMessage = '';
-  let activationSuccess = false;
-  let currentLicense: LicenseInfo | null = null;
+  let errorMessage = '';
+  let step = 'input'; // 'input', 'activating', 'success', 'error'
   
-  // Load current license when modal opens
-  $: if (isOpen) {
-    currentLicense = licenseManager.getLicenseInfo();
-    console.log('🔑 License Modal opened, currentLicense:', currentLicense);
-  }
+  onMount(async () => {
+    try {
+      machineId = await invoke('get_machine_id_command');
+    } catch (error) {
+      console.error('Failed to get machine ID:', error);
+    }
+  });
   
   async function activateLicense() {
     if (!licenseKey.trim()) {
-      activationMessage = 'กรุณากรอก License Key';
-      activationSuccess = false;
+      errorMessage = 'กรุณาใส่ License Key';
       return;
     }
     
     isActivating = true;
-    activationMessage = 'กำลังตรวจสอบ License...';
-    activationSuccess = false;
+    errorMessage = '';
+    step = 'activating';
     
     try {
-      const result = await licenseManager.activateLicense(licenseKey);
+      const result = await invoke('activate_license_command', { 
+        licenseKey: licenseKey.trim() 
+      });
       
-      if (result.isValid) {
-        activationMessage = result.message;
-        activationSuccess = true;
-        currentLicense = result.licenseInfo || null;
-        licenseKey = '';
-        
-        // Close modal after 2 seconds
-        setTimeout(() => {
-          dispatch('close');
-        }, 2000);
-      } else {
-        activationMessage = result.message;
-        activationSuccess = false;
-      }
+      step = 'success';
+      setTimeout(() => {
+        isOpen = false;
+        onLicenseValid();
+      }, 2000);
+      
     } catch (error) {
-      activationMessage = 'เกิดข้อผิดพลาดในการเปิดใช้งาน License';
-      activationSuccess = false;
-    } finally {
+      step = 'error';
+      errorMessage = error;
       isActivating = false;
     }
   }
   
-  async function deactivateLicense() {
-    try {
-      await licenseManager.deactivateLicense();
-      currentLicense = null;
-      activationMessage = 'ยกเลิก License สำเร็จ';
-      activationSuccess = true;
-      
-      setTimeout(() => {
-        dispatch('close');
-      }, 2000);
-    } catch (error) {
-      activationMessage = 'เกิดข้อผิดพลาดในการยกเลิก License';
-      activationSuccess = false;
-    }
-  }
-  
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter' && !isActivating) {
+  function handleKeyPress(event) {
+    if (event.key === 'Enter') {
       activateLicense();
     }
-  }
-  
-  function formatLicenseKey(key: string): string {
-    // Format: XXXX-XXXX-XXXX-XXXX
-    const clean = key.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-    const parts = [];
-    for (let i = 0; i < clean.length && i < 16; i += 4) {
-      parts.push(clean.slice(i, i + 4));
-    }
-    return parts.join('-');
-  }
-  
-  function handleLicenseInput(event: Event) {
-    const target = event.target as HTMLInputElement;
-    const formatted = formatLicenseKey(target.value);
-    licenseKey = formatted;
-  }
-  
-  function getStatusColor(): string {
-    if (!currentLicense) return '#ff6b6b';
-    if (!licenseManager.isLicenseValid()) return '#ff6b6b';
-    if (currentLicense.isTrial) return '#ffa726';
-    return '#4caf50';
-  }
-  
-  function getStatusIcon(): string {
-    if (!currentLicense) return '❌';
-    if (!licenseManager.isLicenseValid()) return '❌';
-    if (currentLicense.isTrial) return '⏰';
-    return '✅';
   }
 </script>
 
 {#if isOpen}
-  <div class="modal-backdrop" on:click={() => dispatch('close')} on:keydown={(e) => e.key === 'Escape' && dispatch('close')} role="button" tabindex="0">
-    <div class="modal license-modal" on:click|stopPropagation role="dialog">
+  <div class="modal-overlay">
+    <div class="modal">
       <div class="modal-header">
-        <h3>🔑 License Management</h3>
-        <button class="modal-close" on:click={() => dispatch('close')}>×</button>
+        <h2>🔑 เปิดใช้งาน Win Count Pro</h2>
       </div>
       
       <div class="modal-body">
-        <!-- Current License Status -->
-        {#if currentLicense && licenseManager.isLicenseValid()}
-          <div class="license-status">
-            <div class="status-header">
-              <span class="status-icon" style="color: {getStatusColor()}">{getStatusIcon()}</span>
-              <h4>สถานะ License ปัจจุบัน</h4>
-            </div>
+        {#if step === 'input'}
+          <div class="license-form">
+            <p class="description">
+              ใส่ License Key เพื่อเปิดใช้งาน Win Count Pro
+            </p>
             
-            <div class="license-details">
-              <div class="detail-row">
-                <span class="detail-label">License Key:</span>
-                <span class="detail-value">{currentLicense.key}</span>
-              </div>
-              
-              {#if currentLicense.customerName}
-                <div class="detail-row">
-                  <span class="detail-label">ลูกค้า:</span>
-                  <span class="detail-value">{currentLicense.customerName}</span>
-                </div>
-              {/if}
-              
-              {#if currentLicense.customerEmail}
-                <div class="detail-row">
-                  <span class="detail-label">อีเมล:</span>
-                  <span class="detail-value">{currentLicense.customerEmail}</span>
-                </div>
-              {/if}
-              
-              {#if currentLicense.expiresAt}
-                <div class="detail-row">
-                  <span class="detail-label">หมดอายุ:</span>
-                  <span class="detail-value">{new Date(currentLicense.expiresAt).toLocaleDateString('th-TH')}</span>
-                </div>
-              {/if}
-              
-              {#if currentLicense.isTrial}
-                <div class="detail-row">
-                  <span class="detail-label">Trial:</span>
-                  <span class="detail-value trial-warning">เหลือ {licenseManager.getTrialInfo().daysLeft} วัน</span>
-                </div>
-              {/if}
-              
-              <div class="detail-row">
-                <span class="detail-label">ฟีเจอร์:</span>
-                <span class="detail-value">
-                  {currentLicense.features.map(f => f.charAt(0).toUpperCase() + f.slice(1)).join(', ')}
-                </span>
-              </div>
-            </div>
-            
-            <div class="license-actions">
-              <button class="action-btn deactivate" on:click={deactivateLicense}>
-                🔄 ยกเลิก License
-              </button>
-            </div>
-          </div>
-        {:else}
-          <!-- License Activation -->
-          <div class="license-activation">
-            <div class="activation-header">
-              <h4>🔑 เปิดใช้งาน License</h4>
-              <p class="activation-note">
-                กรุณากรอก License Key เพื่อเปิดใช้งานแอพพลิเคชัน
-              </p>
-            </div>
-            
-            <div class="license-input-group">
-              <label for="license-key-input">License Key:</label>
-              <input
-                id="license-key-input"
-                type="text"
+            <div class="form-group">
+              <label>License Key:</label>
+              <input 
+                type="text" 
                 bind:value={licenseKey}
-                on:input={handleLicenseInput}
-                on:keydown={handleKeydown}
-                placeholder="XXXX-XXXX-XXXX-XXXX"
-                maxlength="19"
-                class="license-input"
+                placeholder="WC-2025-XXXXX-XXXX"
+                on:keypress={handleKeyPress}
                 disabled={isActivating}
               />
             </div>
             
-            <!-- Demo Keys -->
-            <div class="demo-keys">
-              <h5>🔑 Demo Keys สำหรับทดสอบ:</h5>
-              <div class="demo-key-list">
-                <div class="demo-key-item">
-                  <span class="demo-key">DEMO-1234-5678-9ABC</span>
-                  <span class="demo-desc">Trial License (30 วัน)</span>
-                </div>
-                <div class="demo-key-item">
-                  <span class="demo-key">PRO-2024-ARTY-WOOF</span>
-                  <span class="demo-desc">Pro License (1 ปี)</span>
-                </div>
-              </div>
+            <div class="form-group">
+              <label>Machine ID:</label>
+              <input 
+                type="text" 
+                value={machineId}
+                readonly 
+                class="readonly"
+              />
+              <p class="hint">Machine ID ใช้สำหรับผูก License กับเครื่องนี้</p>
             </div>
             
-            <div class="activation-actions">
-              <button 
-                class="action-btn activate" 
-                on:click={activateLicense}
-                disabled={isActivating || !licenseKey.trim()}
-              >
-                {isActivating ? '🔄 กำลังตรวจสอบ...' : '✅ เปิดใช้งาน'}
-              </button>
-            </div>
+            {#if errorMessage}
+              <div class="error-message">
+                ❌ {errorMessage}
+              </div>
+            {/if}
+            
+            <button 
+              class="activate-btn"
+              on:click={activateLicense}
+              disabled={isActivating}
+            >
+              {isActivating ? '⏳ กำลังเปิดใช้งาน...' : '🚀 เปิดใช้งาน'}
+            </button>
           </div>
-        {/if}
-        
-        <!-- Activation Message -->
-        {#if activationMessage}
-          <div class="activation-message {activationSuccess ? 'success' : 'error'}">
-            {activationMessage}
+          
+        {:else if step === 'activating'}
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <h3>⏳ กำลังตรวจสอบ License...</h3>
+            <p>กรุณารอสักครู่</p>
+          </div>
+          
+        {:else if step === 'success'}
+          <div class="success-state">
+            <h3>🎉 เปิดใช้งานสำเร็จ!</h3>
+            <p>Win Count Pro พร้อมใช้งานแล้ว</p>
+            <div class="checkmark">✅</div>
+          </div>
+          
+        {:else if step === 'error'}
+          <div class="error-state">
+            <h3>❌ เปิดใช้งานไม่สำเร็จ</h3>
+            <p class="error-detail">{errorMessage}</p>
+            <button 
+              class="retry-btn"
+              on:click={() => { step = 'input'; errorMessage = ''; }}
+            >
+              🔄 ลองใหม่
+            </button>
           </div>
         {/if}
       </div>
       
       <div class="modal-footer">
-        <button class="primary-btn" on:click={() => dispatch('close')}>
-          {currentLicense ? 'ปิด' : 'ยกเลิก'}
-        </button>
+        <div class="help-links">
+          <a href="#" class="help-link">🛒 ซื้อ License</a>
+          <a href="#" class="help-link">❓ ต้องการความช่วยเหลือ</a>
+        </div>
       </div>
     </div>
   </div>
 {/if}
 
 <style>
-  .license-modal {
-    max-width: 600px;
-    width: 90vw;
-  }
-  
-  .license-status {
-    margin-bottom: 24px;
-  }
-  
-  .status-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-  
-  .status-icon {
-    font-size: 24px;
-  }
-  
-  .status-header h4 {
-    margin: 0;
-    color: #333;
-    font-size: 1.2em;
-  }
-  
-  .license-details {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 16px;
-  }
-  
-  .detail-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid #e9ecef;
-  }
-  
-  .detail-row:last-child {
-    border-bottom: none;
-  }
-  
-  .detail-label {
-    font-weight: 600;
-    color: #495057;
-  }
-  
-  .detail-value {
-    color: #212529;
-    font-family: 'MiSansThai', sans-serif;
-  }
-  
-  .trial-warning {
-    color: #ff6b6b;
-    font-weight: 600;
-  }
-  
-  .license-actions {
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
     display: flex;
     justify-content: center;
+    align-items: center;
+    z-index: 1000;
   }
   
-  .license-activation {
+  .modal {
+    background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%);
+    border-radius: 16px;
+    width: 90%;
+    max-width: 500px;
+    border: 2px solid #3b82f6;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  }
+  
+  .modal-header {
+    padding: 24px 24px 0;
     text-align: center;
   }
   
-  .activation-header {
-    margin-bottom: 24px;
-  }
-  
-  .activation-header h4 {
-    margin: 0 0 8px 0;
-    color: #333;
-    font-size: 1.3em;
-  }
-  
-  .activation-note {
+  .modal-header h2 {
+    color: #3b82f6;
     margin: 0;
-    color: #6c757d;
-    font-size: 0.95em;
+    font-size: 24px;
+    font-weight: 600;
   }
   
-  .license-input-group {
+  .modal-body {
+    padding: 24px;
+  }
+  
+  .license-form .description {
+    text-align: center;
+    color: #94a3b8;
     margin-bottom: 24px;
   }
   
-  .license-input-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: 600;
-    color: #495057;
+  .form-group {
+    margin-bottom: 20px;
   }
   
-  .license-input {
+  .form-group label {
+    display: block;
+    color: #e2e8f0;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  
+  .form-group input {
     width: 100%;
     padding: 12px 16px;
-    border: 2px solid #dee2e6;
+    background: rgba(15, 23, 42, 0.8);
+    border: 2px solid #334155;
     border-radius: 8px;
+    color: #e2e8f0;
     font-size: 16px;
-    font-family: 'MiSansThai', sans-serif;
-    text-align: center;
-    letter-spacing: 2px;
-    transition: all 0.3s ease;
+    transition: border-color 0.3s;
   }
   
-  .license-input:focus {
+  .form-group input:focus {
     outline: none;
-    border-color: #007AFF;
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    border-color: #3b82f6;
   }
   
-  .license-input:disabled {
-    background-color: #f8f9fa;
-    color: #6c757d;
+  .form-group input.readonly {
+    background: rgba(15, 23, 42, 0.4);
+    color: #64748b;
   }
   
-  .demo-keys {
-    margin-bottom: 24px;
-    text-align: left;
+  .hint {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
   }
   
-  .demo-keys h5 {
-    margin: 0 0 12px 0;
-    color: #495057;
-    font-size: 1em;
-  }
-  
-  .demo-key-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .demo-key-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 12px;
-    background: #e9ecef;
-    border-radius: 6px;
-    font-size: 0.9em;
-  }
-  
-  .demo-key {
-    font-family: 'Courier New', monospace;
-    font-weight: 600;
-    color: #495057;
-  }
-  
-  .demo-desc {
-    color: #6c757d;
-    font-size: 0.85em;
-  }
-  
-  .activation-actions {
-    display: flex;
-    justify-content: center;
-  }
-  
-  .activation-message {
-    margin-top: 16px;
-    padding: 12px 16px;
-    border-radius: 6px;
-    font-weight: 500;
-    text-align: center;
-  }
-  
-  .activation-message.success {
-    background: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
-  }
-  
-  .activation-message.error {
-    background: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-  }
-  
-  .action-btn {
-    padding: 12px 24px;
+  .activate-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
     border: none;
-    border-radius: 6px;
-    font-size: 14px;
+    border-radius: 8px;
+    color: white;
+    font-size: 16px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.3s;
   }
   
-  .action-btn.activate {
-    background: linear-gradient(135deg, #007AFF, #00D4FF);
-    color: white;
-  }
-  
-  .action-btn.activate:hover:not(:disabled) {
+  .activate-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
   }
   
-  .action-btn.activate:disabled {
+  .activate-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
-    transform: none;
   }
   
-  .action-btn.deactivate {
-    background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
-    color: white;
+  .error-message {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid #ef4444;
+    border-radius: 8px;
+    padding: 12px;
+    color: #fca5a5;
+    margin-bottom: 16px;
   }
   
-  .action-btn.deactivate:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  .loading-state,
+  .success-state,
+  .error-state {
+    text-align: center;
+    padding: 20px;
   }
   
-  .primary-btn {
-    background: linear-gradient(135deg, #007AFF, #00D4FF);
-    color: white;
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #334155;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .checkmark {
+    font-size: 48px;
+    margin: 16px 0;
+  }
+  
+  .retry-btn {
+    padding: 10px 20px;
+    background: #ef4444;
     border: none;
-    padding: 12px 24px;
     border-radius: 6px;
-    font-size: 14px;
-    font-weight: 600;
+    color: white;
     cursor: pointer;
-    transition: all 0.3s ease;
+    margin-top: 16px;
   }
   
-  .primary-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+  .modal-footer {
+    padding: 0 24px 24px;
+    border-top: 1px solid #334155;
+    margin-top: 16px;
+    padding-top: 16px;
+  }
+  
+  .help-links {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+  }
+  
+  .help-link {
+    color: #3b82f6;
+    text-decoration: none;
+    font-size: 14px;
+  }
+  
+  .help-link:hover {
+    text-decoration: underline;
   }
 </style> 
