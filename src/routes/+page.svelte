@@ -1968,7 +1968,7 @@
     <div class="action-section">
       <!-- Preset Button -->
       <button class="donate-btn" on:click={() => showPresetModal = true}>
-        เลือกเกม
+        โปรไฟล์
       </button>
 
       <!-- Donate Button -->
@@ -2361,7 +2361,7 @@
     <div class="modal-backdrop" on:click={() => showPresetModal = false} on:keydown={(e) => e.key === 'Escape' && (showPresetModal = false)} role="button" tabindex="0">
       <div class="modal settings-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
-          <h3>เลือกเกมส์</h3>
+          <h3>โปรไฟล์เกมส์</h3>
           <button class="modal-close" on:click={() => showPresetModal = false}>×</button>
         </div>
         <div class="modal-body">
