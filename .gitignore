@@ -2,7 +2,7 @@
 keys/minisign.key
 keys/*.key
 *.key
-password.txt
+keys/password.txt
 backup/
 
 # Tauri build artifacts
