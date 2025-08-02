@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: windows-latest
-    environment: production  # ← แก้ไข
+    environment: production
     
     steps:
       - name: 📂 Checkout repository
@@ -44,8 +44,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ steps.get_version.outputs.VERSION }}          # ← เพิ่ม
-          releaseName: 'Win Count ${{ steps.get_version.outputs.VERSION }}'  # ← เพิ่ม
+          tagName: ${{ steps.get_version.outputs.VERSION }}
+          releaseName: 'Win Count ${{ steps.get_version.outputs.VERSION }}'
           includeUpdaterJson: true
           includeDebug: false
           includeRelease: true
@@ -66,44 +66,14 @@ jobs:
             
             **🚀 Auto-update enabled!**
 
-      - name: 🗑️ Remove Source Code Assets
-        shell: powershell
-        run: |
-          Write-Host "🔍 Listing all release assets..."
-          gh release view "${{ steps.get_version.outputs.VERSION }}"
-          
-          Write-Host "🗑️ Attempting to remove source code assets..."
-          
-          $sourceAssets = @(
-            "Source code (zip)",
-            "Source code (tar.gz)",
-            "${{ github.event.repository.name }}-${{ steps.get_version.outputs.VERSION }}.zip",
-            "${{ github.event.repository.name }}-${{ steps.get_version.outputs.VERSION }}.tar.gz"
-          )
-          
-          foreach ($asset in $sourceAssets) {
-            try {
-              Write-Host "🗑️ Trying to delete: $asset"
-              gh release delete-asset "${{ steps.get_version.outputs.VERSION }}" "$asset" --yes
-              Write-Host "✅ Deleted: $asset"
-            } catch {
-              Write-Host "ℹ️ Asset not found or already deleted: $asset"
-            }
-          }
-          
-          Write-Host "🔍 Final release assets:"
-          gh release view "${{ steps.get_version.outputs.VERSION }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: ✅ Release Summary
         run: |
           echo "🎉 Release ${{ steps.get_version.outputs.VERSION }} completed!"
           echo "📦 MSI installer created successfully"
           echo "🔐 Digital signature applied"
           echo "📄 latest.json generated for auto-update"
-          echo "🗑️ Source code assets removed"
           echo "🔗 Download: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.VERSION }}"
           echo ""
           echo "✅ Auto-update is now enabled!"
-          echo "🔄 Users will receive update notifications automatically" 
+          echo "🔄 Users will receive update notifications automatically"
+          echo "💡 Manual step: Remove source code assets from GitHub release" 
