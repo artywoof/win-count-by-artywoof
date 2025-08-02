@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: windows-latest
-    environment: Win Count by ArtYWoof
+    environment: production  # ← แก้ไข
     
     steps:
       - name: 📂 Checkout repository
@@ -44,6 +44,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          tagName: ${{ steps.get_version.outputs.VERSION }}          # ← เพิ่ม
+          releaseName: 'Win Count ${{ steps.get_version.outputs.VERSION }}'  # ← เพิ่ม
           includeUpdaterJson: true
           includeDebug: false
           includeRelease: true
@@ -68,11 +70,10 @@ jobs:
         shell: powershell
         run: |
           Write-Host "🔍 Listing all release assets..."
-          gh release view ${{ steps.get_version.outputs.VERSION }}
+          gh release view "${{ steps.get_version.outputs.VERSION }}"
           
           Write-Host "🗑️ Attempting to remove source code assets..."
           
-          # Try to delete common source code asset names
           $sourceAssets = @(
             "Source code (zip)",
             "Source code (tar.gz)",
@@ -83,7 +84,7 @@ jobs:
           foreach ($asset in $sourceAssets) {
             try {
               Write-Host "🗑️ Trying to delete: $asset"
-              gh release delete-asset ${{ steps.get_version.outputs.VERSION }} "$asset" --yes
+              gh release delete-asset "${{ steps.get_version.outputs.VERSION }}" "$asset" --yes
               Write-Host "✅ Deleted: $asset"
             } catch {
               Write-Host "ℹ️ Asset not found or already deleted: $asset"
@@ -91,7 +92,7 @@ jobs:
           }
           
           Write-Host "🔍 Final release assets:"
-          gh release view ${{ steps.get_version.outputs.VERSION }}
+          gh release view "${{ steps.get_version.outputs.VERSION }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
