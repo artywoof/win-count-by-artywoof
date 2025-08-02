@@ -12,6 +12,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: windows-latest
+    environment: production
     
     steps:
       - name: 📂 Checkout repository
