@@ -5,6 +5,12 @@ keys/*.key
 keys/password.txt
 backup/
 
+# Tauri signing keys
+.tauri/
+*.key
+!*.key.pub
+~/.tauri/
+
 # Tauri build artifacts
 target/
 dist/
