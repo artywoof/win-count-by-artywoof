@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { writable } from 'svelte/store';
+  import { writable, derived } from 'svelte/store';
   import { browser } from '$app/environment';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { invoke } from '@tauri-apps/api/core';
@@ -15,6 +15,21 @@
   const showCrown = writable(true);
   const presets = writable<string[]>([]);
   const currentPreset = writable('Default');
+  
+  // Computed store that puts current preset at the top
+  const sortedPresets = derived([presets, currentPreset], ([$presets, $currentPreset]: [string[], string]) => {
+    if ($presets.length === 0) return [];
+    
+    const currentPresetIndex = $presets.indexOf($currentPreset);
+    if (currentPresetIndex === -1) return $presets; // If current preset not found, return original order
+    
+    // Move current preset to the top
+    const reordered = [...$presets];
+    const [moved] = reordered.splice(currentPresetIndex, 1);
+    reordered.unshift(moved);
+    
+    return reordered;
+  });
 
   // Overlay state - separate from app state
   const overlayShowGoal = writable(true);
@@ -98,6 +113,30 @@
   let operationError = false;
   let showResultModal = false;
   let resultMessage = '';
+  
+  // Anti-tampering protection
+  let isTampered = false;
+  let appIntegrity = true;
+  
+  // Anti-tampering check function
+  async function checkAppIntegrity() {
+    try {
+      // Check if running in Tauri environment
+      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        // Additional checks can be added here
+        appIntegrity = true;
+        console.log('✅ App integrity check passed');
+      } else {
+        appIntegrity = false;
+        isTampered = true;
+        console.warn('⚠️ App integrity check failed - not running in Tauri');
+      }
+    } catch (error) {
+      console.error('❌ App integrity check error:', error);
+      appIntegrity = false;
+      isTampered = true;
+    }
+  }
 
   // Sound confirmation modals
   let showDeleteSoundModal = false;
@@ -544,29 +583,50 @@
   }
 
   async function deletePreset(presetName: string) {
-    if (presetName === 'Default') {
-      alert('ไม่สามารถลบ Preset เริ่มต้นได้');
-      return;
-    }
     try {
       console.log(`🗑️ Attempting to delete preset: ${presetName}`);
+      
+      // โหลดรายการ preset ก่อนลบ
+      const beforeDeleteList: any = await invoke('load_presets');
+      console.log('📋 Presets before deletion:', beforeDeleteList.map((p: any) => p.name));
+      
       await invoke('delete_preset', { name: presetName });
       console.log(`✅ Backend confirmed deletion of: ${presetName}`);
+      
+      // รอสักครู่ให้ backend บันทึกไฟล์
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       // โหลดรายการ preset ใหม่จาก backend
       const presetList: any = await invoke('load_presets');
-      presets.set(presetList.map((p: any) => p.name));
-      // ถ้าลบ preset ที่ใช้งานอยู่ ให้กลับไป Default
+      console.log('📋 Presets after deletion:', presetList.map((p: any) => p.name));
+      
+      // อัปเดต presets store
+      const presetNames = presetList.map((p: any) => p.name);
+      presets.set(presetNames);
+      console.log('🔄 Updated presets store:', presetNames);
+      
+
+      
+      // ถ้าลบ preset ที่ใช้งานอยู่ ให้กลับไป preset แรกที่มี
       if ($currentPreset === presetName) {
-        console.log(`🔄 Switching to Default preset`);
-        currentPreset.set('Default');
-        await loadPreset('Default', false);
+        if (presetList.length > 0) {
+          const firstPreset = presetList[0].name;
+          console.log(`🔄 Switching to first available preset: ${firstPreset}`);
+          currentPreset.set(firstPreset);
+          await loadPreset(firstPreset, false);
+        }
       }
+      
       console.log(`✅ Successfully deleted preset: ${presetName}`);
-      // ไม่ปิด Modal - ให้ผู้ใช้ปิดเอง
-      return; // หยุดการทำงานที่นี่ ไม่ให้ปิด Modal
+      showNotification(`✅ ลบ Preset "${presetName}" สำเร็จ`);
+      
+      // ปิด modal ถ้ามี
+      showDeleteModal = false;
+      presetToDelete = null;
     } catch (err) {
       console.error('❌ Failed to delete preset:', err);
-      alert(`ไม่สามารถลบ Preset "${presetName}" ได้: ${err}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      showNotification(`❌ ไม่สามารถลบ Preset "${presetName}" ได้: ${errorMessage}`);
     }
   }
 
@@ -583,6 +643,19 @@
       goal.set(state.goal || 10);
       showGoal.set(state.show_goal !== false);
       showCrown.set(state.show_crown !== false);
+      currentPreset.set(state.current_preset || 'Default');
+      
+      // Load the current preset data
+      if (state.current_preset && state.current_preset !== 'Default') {
+        try {
+          console.log(`🔄 Loading current preset: ${state.current_preset}`);
+          await loadPreset(state.current_preset, false);
+        } catch (err) {
+          console.error(`❌ Failed to load preset ${state.current_preset}:`, err);
+          // Fallback to Default preset
+          currentPreset.set('Default');
+        }
+      }
       
       tauriAvailable = true;
       
@@ -784,20 +857,11 @@
       try {
         await navigator.clipboard.writeText(overlayUrl);
         showCopyModal = true;
-        setTimeout(() => {
-          showCopyModal = false;
-        }, 2000); // ปิด Modal หลังจาก 2 วินาที
       } catch (err) {
         showCopyModal = true;
-        setTimeout(() => {
-          showCopyModal = false;
-        }, 2000);
       }
     } else {
       showCopyModal = true;
-      setTimeout(() => {
-        showCopyModal = false;
-      }, 2000);
     }
   }
 
@@ -1368,6 +1432,20 @@
       showGoal.set(presetData.show_goal !== false);
       currentPreset.set(presetName);
       
+      // Save the current preset to backend state
+      try {
+        await invoke('set_win_state', {
+          win: presetData.win,
+          goal: presetData.goal,
+          show_goal: presetData.show_goal !== false,
+          show_crown: presetData.show_crown !== false,
+          current_preset: presetName
+        });
+        console.log(`✅ Saved current preset to backend: ${presetName}`);
+      } catch (err) {
+        console.error('❌ Failed to save current preset to backend:', err);
+      }
+      
       // Sync hotkeys with preset
       if (presetData.hotkeys) {
         console.log('🎹 Syncing hotkeys with preset:', presetData.hotkeys);
@@ -1529,6 +1607,9 @@
     // Check license status
     await checkLicenseStatus();
     
+    // Anti-tampering check
+    await checkAppIntegrity();
+    
     // Load donate values from localStorage
     if (typeof localStorage !== 'undefined') {
       const savedDonateAmount = localStorage.getItem('donateAmount');
@@ -1658,6 +1739,14 @@
     editingPreset = preset;
     renameValue = preset;
     console.log(`✏️ Started editing preset: ${preset}`);
+    // ให้ focus ที่ input ทันที
+    setTimeout(() => {
+      const input = document.querySelector('.rename-input') as HTMLInputElement;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 10);
   }
 
   function cancelEditPreset() {
@@ -1675,45 +1764,35 @@
     try {
       console.log(`🔄 Renaming preset from "${oldName}" to "${newName}"`);
       
-      // สร้าง Preset ใหม่ด้วยชื่อใหม่
-      const renamedPresetData: PresetData = {
-        name: newName,
-        win: $win,
-        goal: $goal,
-        show_goal: $showGoal,
-        show_crown: $showCrown,
-        hotkeys: {
-          increase: customHotkeys.increment,
-          decrease: customHotkeys.decrement,
-          step_size: 1
-        }
-      };
-
-      // บันทึก Preset ใหม่
-      await invoke('save_preset', { preset: renamedPresetData });
-      
-      // ลบ Preset เก่า (ถ้าไม่ใช่ Default)
-      if (oldName !== 'Default') {
-        await invoke('delete_preset', { name: oldName });
-      }
+      // ใช้ฟังก์ชัน rename_preset ของ backend
+      await invoke('rename_preset', { oldName: oldName, newName: newName });
+      console.log('✅ Backend confirmed rename');
       
       // โหลดรายการ preset ใหม่
-      const presetList: any = await invoke('load_presets');
-      presets.set(presetList.map((p: any) => p.name));
+      const updatedPresetList: any = await invoke('load_presets');
+      console.log('📋 Loaded presets after rename:', updatedPresetList);
+      
+      // อัปเดต presets store
+      const presetNames = updatedPresetList.map((p: any) => p.name);
+      presets.set(presetNames);
+      console.log('🔄 Updated presets store:', presetNames);
       
       // อัปเดต currentPreset ถ้าเป็น preset ที่กำลังใช้งานอยู่
       if ($currentPreset === oldName) {
         currentPreset.set(newName);
+        console.log(`🔄 Updated currentPreset from "${oldName}" to "${newName}"`);
       }
       
       // ปิดการแก้ไข
       editingPreset = null;
       renameValue = '';
       
+      showNotification(`✅ เปลี่ยนชื่อ Preset จาก "${oldName}" เป็น "${newName}" สำเร็จ`);
       console.log(`✅ Successfully renamed preset from "${oldName}" to "${newName}"`);
     } catch (err) {
       console.error('❌ Failed to rename preset:', err);
-      alert(`ไม่สามารถเปลี่ยนชื่อ Preset ได้: ${err}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      showNotification(`❌ ไม่สามารถเปลี่ยนชื่อ Preset ได้: ${errorMessage}`);
     }
   }
 
@@ -1737,24 +1816,22 @@
       console.log(`🔄 Selecting preset: ${preset}`);
       console.log(`Current preset: ${$currentPreset}, Current win/goal: ${$win}/${$goal}`);
 
-      // บันทึก Preset ปัจจุบันก่อน (ยกเว้น Default)
-      if ($currentPreset !== 'Default') {
-        const currentPresetData: PresetData = {
-          name: $currentPreset,
-          win: $win,
-          goal: $goal,
-          show_goal: $showGoal,
-          show_crown: $showCrown,
-          hotkeys: {
-            increase: customHotkeys.increment,
-            decrease: customHotkeys.decrement,
-            step_size: 1
-          }
-        };
+      // บันทึก Preset ปัจจุบันก่อน
+      const currentPresetData: PresetData = {
+        name: $currentPreset,
+        win: $win,
+        goal: $goal,
+        show_goal: $showGoal,
+        show_crown: $showCrown,
+        hotkeys: {
+          increase: customHotkeys.increment,
+          decrease: customHotkeys.decrement,
+          step_size: 1
+        }
+      };
 
-        await invoke('save_preset', { preset: currentPresetData });
-        console.log(`✅ Saved current preset: ${$currentPreset}`);
-      }
+      await invoke('save_preset', { preset: currentPresetData });
+      console.log(`✅ Saved current preset: ${$currentPreset}`);
 
       // โหลด Preset ใหม่
       const loadedPreset: PresetData = await invoke('load_preset', { name: preset });
@@ -1940,10 +2017,10 @@
   <!-- Bottom Action Buttons -->
   <div class="bottom-actions" style="margin-top: -69px;">
     <button class="action-btn secondary copy-btn" on:click={() => showSettingsModal = true}>
-      ตั้งค่า
+      ⚙️ ตั้งค่า
     </button>
     <button class="action-btn secondary copy-btn" on:click={copyLink}>
-      คัดลอก
+      📋 คัดลอก
     </button>
     
   </div>
@@ -2284,41 +2361,47 @@
     <div class="modal-backdrop" on:click={() => showPresetModal = false} on:keydown={(e) => e.key === 'Escape' && (showPresetModal = false)} role="button" tabindex="0">
       <div class="modal settings-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
+          <h3>เลือกเกมส์</h3>
           <button class="modal-close" on:click={() => showPresetModal = false}>×</button>
         </div>
         <div class="modal-body">
           <div class="preset-list">
-            {#each $presets as preset}
+            {#each $sortedPresets as preset}
               <div class="preset-item-btn {preset === $currentPreset ? 'active' : ''}" on:click={() => selectPreset(preset)}>
+                {#if editingPreset === preset}
+                  <input class="rename-input" bind:value={renameValue} on:keydown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      confirmRenamePreset(preset, renameValue);
+                    }
+                  }} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation placeholder="ตั้งชื่อ Preset (กด Enter)" />
+                  <div class="preset-inline-actions">
+                    <button class="preset-btn confirm" on:click={(e) => {
+                      e.stopPropagation();
+                      confirmRenamePreset(preset, renameValue);
+                    }} title="ยืนยัน">✓</button>
+                    <button class="preset-btn delete" on:click={(e) => {
+                      e.stopPropagation();
+                      cancelEditPreset();
+                    }} title="ยกเลิก">×</button>
+                  </div>
+                {:else}
                   <span class="preset-name">{preset}</span>
-                <div class="preset-inline-actions">
-                  {#if preset === 'Default'}
-                    {#if editingPreset === preset}
-                      <input class="rename-input" bind:value={renameValue} on:keydown|stopPropagation={(e) => e.key === 'Enter' && confirmRenamePreset(preset, renameValue)} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation />
-                      <button class="preset-btn cancel" on:click|stopPropagation={cancelEditPreset} title="ยกเลิก">ยกเลิก</button>
-                    {:else}
-                      <button class="preset-btn edit" on:click|stopPropagation={() => startEditPreset(preset)} title="เปลี่ยนชื่อ">เปลี่ยนชื่อ</button>
-                    {/if}
-                  {:else if preset !== 'Default'}
-                    {#if editingPreset === preset}
-                      <input class="rename-input" bind:value={renameValue} on:keydown|stopPropagation={(e) => e.key === 'Enter' && confirmRenamePreset(preset, renameValue)} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation />
-                      <button class="preset-btn cancel" on:click|stopPropagation={cancelEditPreset} title="ยกเลิก">ยกเลิก</button>
-                    {:else}
-                      <button class="preset-btn edit" on:click|stopPropagation={() => startEditPreset(preset)} title="เปลี่ยนชื่อ">เปลี่ยนชื่อ</button>
-                      <button class="preset-btn delete" on:click|stopPropagation={() => {
-                        console.log(`🔴 Delete button clicked for preset: ${preset}`);
-                        requestDeletePreset(preset);
-                      }} title="ลบ">ลบ</button>
-                    {/if}
-                  {/if}
-                </div>
+                  <div class="preset-inline-actions">
+                    <button class="preset-btn edit" on:click|stopPropagation={() => startEditPreset(preset)} title="เปลี่ยนชื่อ">เปลี่ยนชื่อ</button>
+                    <button class="preset-btn delete" on:click|stopPropagation={() => {
+                      console.log(`🔴 Delete button clicked for preset: ${preset}`);
+                      requestDeletePreset(preset);
+                    }} title="ลบ">ลบ</button>
+                  </div>
+                {/if}
               </div>
             {/each}
             <!-- ปุ่มเพิ่ม Preset อยู่ล่างสุดเสมอ -->
             {#if showAddPreset}
               <div class="preset-item-btn add-preset-row">
-                <input class="add-preset-input" bind:this={addPresetInput} bind:value={addPresetValue} on:keydown|stopPropagation={(e) => e.key === 'Enter' && confirmAddPreset()} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation placeholder="ตั้งชื่อ Preset" />
-                <button class="preset-btn cancel" on:click|stopPropagation={cancelAddPreset}>ยกเลิก</button>
+                <input class="add-preset-input" bind:this={addPresetInput} bind:value={addPresetValue} on:keydown|stopPropagation={(e) => e.key === 'Enter' && confirmAddPreset()} on:click|stopPropagation on:input|stopPropagation on:focus|stopPropagation on:blur|stopPropagation placeholder="ตั้งชื่อ Preset (กด Enter)" />
+                <button class="preset-btn delete small" on:click|stopPropagation={cancelAddPreset}>ยกเลิก</button>
               </div>
             {:else}
               <button class="preset-item-btn add" on:click|stopPropagation={openAddPreset}>+</button>
@@ -2331,21 +2414,40 @@
 
   <!-- Copy Success Modal -->
   {#if showCopyModal}
-    <div class="modal-backdrop" on:click={() => showCopyModal = false} on:keydown={(e) => e.key === 'Escape' && (showCopyModal = false)} role="button" tabindex="0">
+    <div class="modal-backdrop" role="button" tabindex="0">
       <div class="modal copy-modal" on:click|stopPropagation role="dialog">
-        <div class="modal-body">
+        <div class="modal-body" style="max-height: calc(85vh - 120px); overflow-y: auto; padding-bottom: 20px;">
           <div class="copy-success">
-                          <div class="copy-icon">{hasUpdate ? '🔄' : '📋'}</div>
-            <h3>{hasUpdate ? '🔄 อัปเดตใหม่!' : 'คัดลอกแล้ว!'}</h3>
-            <p>{hasUpdate ? 'อัปเดตใหม่พร้อมใช้งาน' : 'ลิงก์ Overlay ถูกคัดลอกไปยัง Clipboard แล้ว'}</p>
-            <p class="copy-url">{hasUpdate ? updateInfo?.version || 'เวอร์ชันใหม่' : 'http://localhost:777/overlay.html'}</p>
-            {#if hasUpdate}
-              <div class="update-notice">
-                <p>🔄 อัปเดตใหม่พร้อมใช้งาน!</p>
-                <button class="update-btn" on:click={downloadUpdate}>📥 ดาวน์โหลด</button>
-              </div>
-            {/if}
+            <h3>คัดลอกลิงก์แล้ว ✅</h3>
+            <div class="copy-url-container">
+              <p class="copy-url">http://localhost:777/overlay.html</p>
+              <button class="copy-btn" on:click={copyOverlayLink} title="คัดลอกลิงก์">📋</button>
+            </div>
+            
+            <div class="overlay-instructions">
+              <h4>🔧 วิธีการเพิ่ม Overlay</h4>
+              <ol>
+                <li>🎬 เปิด TikTok LIVE Studio</li>
+                <li>🔍 หาปุ่ม "ที่มา (Source)" → กด `+`</li>
+                <li>🔗 เลือก "ลิงก์ (Link)" → กด "เพิ่ม (Add)"</li>
+                <li>📝 วางลิงก์: กด `Ctrl + V`</li>
+                <li>✨ กด "เพิ่มที่มา (Add Source)"</li>
+              </ol>
+              
+              <hr>
+              
+              <h4>⚠️ คำเตือนสำคัญ!</h4>
+              <ul>
+                <li>🚨 <strong>เปิด Win Count ก่อนเปิด TikTok LIVE Studio ทุกครั้ง</strong></li>
+                <li>🔄 หากเปิด TikTok LIVE Studio ก่อน → ลบลิงก์เก่า(กดคลิกขวาและลบ) แล้วเพิ่มลิงก์ใหม่</li>
+              </ul>
+              
+
+            </div>
           </div>
+        </div>
+        <div class="modal-footer" style="padding: 10px 20px; margin-top: -26px;">
+          <button class="action-btn secondary" on:click={() => showCopyModal = false} style="background: rgba(0, 229, 255, 0.1); border: 2px solid #00e5ff; color: #00e5ff; padding: 12px 24px; font-size: 18px; font-weight: 600; border-radius: 8px; transition: all 0.3s ease;">ตกลง</button>
         </div>
       </div>
     </div>
@@ -2354,17 +2456,18 @@
   <!-- Delete Confirmation Modal -->
   {#if showDeleteModal}
     <div class="modal-backdrop" on:click={() => showDeleteModal = false} on:keydown={(e) => e.key === 'Escape' && (showDeleteModal = false)} role="button" tabindex="0">
-      <div class="modal delete-modal" on:click|stopPropagation role="dialog">
+      <div class="modal reset-hotkey-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
           <h3>ยืนยันการลบ Preset</h3>
-          <button class="modal-close" on:click={() => showDeleteModal = false}>×</button>
         </div>
         <div class="modal-body">
-          <p>คุณแน่ใจหรือไม่ว่าต้องการลบ Preset "{presetToDelete}"?</p>
-          <div class="modal-actions">
-            <button class="action-btn confirm" on:click={confirmDeletePreset}>ยืนยัน</button>
-            <button class="action-btn cancel" on:click={cancelDeletePreset}>ยกเลิก</button>
+          <div class="confirm-message">
+            <p style="white-space: nowrap;">คุณแน่ใจหรือไม่ว่าต้องการลบ Preset "{presetToDelete}"?</p>
           </div>
+        </div>
+        <div class="modal-footer">
+          <button class="action-btn confirm" on:click={confirmDeletePreset}>ยืนยัน</button>
+          <button class="action-btn cancel" on:click={cancelDeletePreset}>ยกเลิก</button>
         </div>
       </div>
     </div>
@@ -2816,6 +2919,27 @@
     background: rgba(0, 229, 255, 0.15); 
     transform: translateY(-2px);
   }
+  
+  .action-btn.secondary {
+    background: transparent; 
+    border: 2px solid #00e5ff; 
+    border-radius: calc(476px * 0.029); /* ~14px */
+    color: #00e5ff;
+    font-size: calc(476px * 0.029 + 9px); /* ลดจาก +12px เป็น +9px */
+    font-weight: 700; 
+    font-family: 'MiSansThai', sans-serif;
+    padding: calc(776px * 0.016) calc(476px * 0.021); /* ~12px ~10px */
+    width: calc(476px * 0.40); /* 40% ของ main-content */
+    max-width: 190px;
+    transition: all 0.3s;
+    display: flex; align-items: center; justify-content: center;
+    height: calc(776px * 0.058); /* ~45px */
+  }
+  
+  .action-btn.secondary:hover { 
+    background: rgba(0, 229, 255, 0.15); 
+    transform: translateY(-2px);
+  }
 
 
 
@@ -2829,22 +2953,26 @@
   .window-controls-right { right: 28px; }
   .window-btn {
     width: 32px; height: 32px; border-radius: 6px; 
-    border: 2px solid #1976d2; background: transparent;
-    color: #1976d2; font-size: 1.2rem; font-weight: 600; 
+    border: 2px solid rgba(0, 229, 255, 0.3); background: transparent;
+    color: #00e5ff; font-size: 1.2rem; font-weight: 600; 
     font-family: 'MiSansThai', sans-serif;
     display: flex; align-items: center; justify-content: center; 
     transition: all 0.2s ease;
     cursor: pointer;
+    box-shadow: 0 2px 8px 0 rgba(0,229,255,0.08);
   }
   .window-btn:hover { 
-    background: #1976d2; color: #fff; 
+    background: rgba(0, 229, 255, 0.15); 
+    border-color: #00e5ff;
+    color: #fff; 
     transform: translateY(-1px);
+    box-shadow: 0 4px 16px 0 rgba(0,229,255,0.2);
   }
 
   /* Settings Modal Styles */
   .settings-modal {
-    width: 380px !important;
-    max-width: 380px !important;
+    width: 450px !important;
+    max-width: 450px !important;
     max-height: calc(80vh - 88px);
     overflow-y: auto;
   }
@@ -3738,6 +3866,8 @@
     justify-content: center;
     z-index: 9999;
     padding: 20px;
+    border-radius: 24px;
+    margin: 10px;
   }
   .modal-backdrop::before {
     content: none;
@@ -3768,6 +3898,8 @@
     font-weight: 700;
     color: #00e5ff;
     margin: 0;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    letter-spacing: 0.5px;
   }
 
   .modal-close {
@@ -3821,11 +3953,11 @@
     padding: 4px 8px;
     border-radius: 4px;
   }
-  .preset-list {
+  .settings-modal .preset-list {
     width: 100%;
     max-width: 100%;
     margin: 0;
-    padding: 0;
+    padding: 20px 0 0 0;
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -3845,27 +3977,62 @@
     border-radius: 18px;
   }
   .preset-item-btn {
-    padding: 8px 28px;
-    /* ...คง style เดิม... */
+    padding: 14px 28px;
+    font-size: 18px;
+    font-weight: 600;
+    background: rgba(0, 229, 255, 0.05);
+    border: 2px solid rgba(0, 229, 255, 0.18);
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    transition: box-shadow 0.2s, background 0.2s, border 0.2s;
+    outline: none;
+    box-shadow: 0 1px 4px 0 rgba(0,229,255,0.04);
+    position: relative;
+    min-height: 60px;
   }
   .preset-item-btn.add {
-    padding: 2px 28px;
-    font-size: 38px;
+    padding: 14px 28px;
+    font-size: 24px;
     font-weight: 700;
-    /* ...คง style เดิม... */
+    background: rgba(0, 229, 255, 0.1);
+    border: 2px dashed rgba(0, 229, 255, 0.3);
+    color: #00e5ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preset-item-btn.add:hover {
+    background: rgba(0, 229, 255, 0.2);
+    border-color: #00e5ff;
+    transform: translateY(-1px);
   }
   .add-preset-row {
-    padding: 2px 28px;
+    padding: 14px 28px;
     min-height: unset;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .add-preset-input {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 16px;
+    border: 1px solid #00e5ff;
+    border-radius: 6px;
+    background: transparent;
+    color: #fff;
+    outline: none;
+  }
+  .add-preset-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
   }
   .preset-item-btn:hover,
   .preset-item-btn.active {
-    background: linear-gradient(90deg, #00e5ff 0%, #0a2540 100%);
-    color: #181a23;
-    border: 2.5px solid #00e5ff;
-    border-right: none;
-    box-shadow: 0 4px 18px 0 rgba(0,229,255,0.18);
-    z-index: 2;
+    background: linear-gradient(135deg, #00e5ff 0%, #00b8cc 100%);
+    border-color: #00e5ff;
+    box-shadow: 0 4px 20px 0 rgba(0,229,255,0.3);
+    transform: translateY(-1px);
   }
   .preset-actions {
     display: flex;
@@ -3875,42 +4042,7 @@
     flex-shrink: 0;
     height: 100%;
   }
-  .preset-btn.delete {
-    min-width: unset;
-    width: auto;
-    padding: 0 8px;
-    font-size: 14px;
-    border-radius: 6px;
-    margin-right: 2px;
-    height: 32px;
-    line-height: 1.2;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .preset-btn.delete:last-child {
-    margin-right: 0;
-  }
-  .preset-btn.edit {
-    border-radius: 0 18px 18px 0;
-    min-width: 64px;
-    padding: 0 14px;
-    font-size: 15px;
-    font-family: 'MiSansThai-Bold', sans-serif;
-    font-weight: 600;
-    border-left: 1.5px solid #00e5ff;
-    border-top: 2.5px solid #00e5ff;
-    border-bottom: 2.5px solid #00e5ff;
-    border-right: 2.5px solid #00e5ff;
-    background: #10101a;
-    color: #00e5ff;
-    transition: background 0.2s, color 0.2s;
-    cursor: pointer;
-    height: 100%;
-  }
-  .preset-btn.edit:hover {
-    background: rgba(0,229,255,0.08);
-  }
+
   .preset-name {
     font-size: inherit;
     font-family: 'MiSansThai', sans-serif;
@@ -3921,22 +4053,7 @@
     user-select: none;
     transition: none;
   }
-  .preset-btn.delete {
-    border-color: #ff6b6b;
-    color: #ff6b6b;
-    border-width: 1px;
-  }
-  .preset-btn.delete:hover {
-    background: rgba(255, 107, 107, 0.1);
-  }
-  .preset-btn.edit {
-    color: #00e5ff;
-    border: 1.5px solid #00e5ff;
-    background: transparent;
-  }
-  .preset-btn.edit:hover {
-    background: rgba(0,229,255,0.08);
-  }
+
   .preset-btn.small {
     min-width: 36px;
     width: 36px;
@@ -3947,7 +4064,20 @@
   }
   .preset-btn.delete.small {
     color: #ff6b6b;
-    border: 1px solid #ff6b6b;
+    border: 1.5px solid #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+    box-shadow: 0 2px 8px 0 rgba(255, 107, 107, 0.2);
+    font-size: 14px;
+    padding: 4px 46px;
+    min-width: 72px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    margin-left: 8px;
+    margin-top: 6px;
   }
   .preset-btn.edit.small {
     color: #00e5ff;
@@ -3957,27 +4087,35 @@
   .preset-btn.edit.small:hover {
     background: rgba(0,229,255,0.08);
   }
+  .preset-btn.delete.small:hover {
+    background: rgba(255, 107, 107, 0.2);
+    box-shadow: 0 4px 12px 0 rgba(255, 107, 107, 0.3);
+    transform: translateY(-1px);
+    margin-left: 8px;
+    margin-top: 6px;
+  }
 
   /* CSS: ปรับปุ่ม preset-item-btn ให้ดู clickable, active, และ Default เป็นปุ่มยาวเหมือนกัน */
   .preset-item-btn {
     flex: 1;
     min-width: 0;
-    width: 100%;
+    width: calc(100% + 4px);
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-    background: rgba(0, 229, 255, 0.05);
-    border: 2px solid rgba(0, 229, 255, 0.18);
-    border-radius: 8px;
+    justify-content: space-between;
     padding: 14px 28px;
     font-size: 18px;
     font-weight: 600;
+    background: rgba(0, 229, 255, 0.05);
+    border: 2px solid rgba(0, 229, 255, 0.18);
+    border-radius: 8px;
     color: #fff;
     cursor: pointer;
     transition: box-shadow 0.2s, background 0.2s, border 0.2s;
     outline: none;
     box-shadow: 0 1px 4px 0 rgba(0,229,255,0.04);
     position: relative;
+    margin-bottom: 12px;
   }
   .preset-item-btn:hover {
     background: rgba(0, 229, 255, 0.15);
@@ -3986,8 +4124,6 @@
     transform: translateY(-1px);
   }
   .preset-item-btn:hover .preset-name {
-    text-shadow: 0 0 8px rgba(0, 229, 255, 0.8);
-    font-weight: 700;
     color: #00e5ff;
   }
   .preset-item-btn.active {
@@ -4002,10 +4138,133 @@
     text-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
   }
   .preset-name {
-    font-size: 18px;
+    font-size: 22px;
+    font-family: 'MiSansThai', sans-serif;
     font-weight: 600;
     letter-spacing: 0.5px;
     color: inherit;
+  }
+  .settings-modal .preset-inline-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    position: absolute;
+    right: 24px;
+    top: calc(50% + 6px);
+    transform: translateY(-50%);
+  }
+  .preset-btn {
+    padding: 6px 12px;
+    font-size: 14px;
+    font-family: 'MiSansThai', sans-serif;
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 50px;
+    max-width: 80px;
+    text-align: center;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preset-btn.edit {
+    background: rgba(0, 229, 255, 0.1);
+    border-color: #00e5ff;
+    color: #00e5ff;
+    box-shadow: 0 2px 8px 0 rgba(0, 229, 255, 0.2);
+  }
+  .preset-btn.edit:hover {
+    background: rgba(0, 229, 255, 0.2);
+    box-shadow: 0 4px 12px 0 rgba(0, 229, 255, 0.3);
+    transform: translateY(-1px);
+  }
+  .preset-btn.delete {
+    background: rgba(255, 107, 107, 0.1);
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+    box-shadow: 0 2px 8px 0 rgba(255, 107, 107, 0.2);
+    font-size: 14px;
+    padding: 4px 8px;
+    min-width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1.5px solid #ff6b6b;
+    transition: all 0.2s ease;
+  }
+  .preset-btn.delete:hover {
+    background: rgba(255, 107, 107, 0.2);
+    box-shadow: 0 4px 12px 0 rgba(255, 107, 107, 0.3);
+    transform: translateY(-1px);
+  }
+  .preset-btn.confirm {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: #4caf50;
+    color: #4caf50;
+    box-shadow: 0 2px 8px 0 rgba(76, 175, 80, 0.3);
+    font-size: 14px;
+    padding: 4px 8px;
+    min-width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preset-btn.confirm:hover {
+    background: rgba(76, 175, 80, 0.3);
+    box-shadow: 0 4px 12px 0 rgba(76, 175, 80, 0.4);
+    transform: translateY(-1px);
+  }
+  .preset-btn.cancel {
+    background: rgba(255, 107, 107, 0.1);
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+    box-shadow: 0 2px 8px 0 rgba(255, 107, 107, 0.2);
+    font-size: 14px;
+    padding: 4px 8px;
+    min-width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1.5px solid #ff6b6b;
+    transition: all 0.2s ease;
+  }
+  .preset-btn.cancel:hover {
+    background: rgba(255, 107, 107, 0.2);
+    box-shadow: 0 4px 12px 0 rgba(255, 107, 107, 0.3);
+    transform: translateY(-1px);
+  }
+  .rename-input {
+    flex: 1;
+    max-width: calc(100% - 80px); /* ให้พื้นที่สำหรับปุ่ม ติ๊กถูก และ X ที่มีขนาดที่กำหนดแล้ว */
+    padding: 0;
+    font-size: 22px;
+    font-family: 'MiSansThai', sans-serif;
+    font-weight: 600;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    outline: none;
+    transition: all 0.2s;
+    box-shadow: none;
+    min-width: 0; /* ให้ flex item หดตัวได้ */
+  }
+  .rename-input:focus {
+    background: rgba(0, 229, 255, 0.1);
+    border-radius: 4px;
+    padding: 2px 8px;
+  }
+  .rename-input::placeholder {
+    color: rgba(0, 229, 255, 0.5);
+    font-weight: 500;
   }
 
   /* RESET WIN NUMBER INPUT STYLE ให้เหมือนเดิม 100% */
@@ -4090,60 +4349,11 @@
   }
   /* END RESET */
 
-  .rename-input {
-    width: 120px;
-    font-size: 18px;
-    border-radius: 6px;
-    padding: 2px 6px;
-    margin-right: -80px;
-    margin-top: -14px; 
-    height: 42px;
-  }
-  .rename-input:focus {
-    border-color: #00e5ff;
-    background: #ffffff;
-  }
 
-  .preset-btn.cancel {
-    color: #ff6b6b;
-    border: 1.5px solid #ff6b6b;
-    background: #10101a;
-    border-radius: 8px;
-    padding: 0 10px;
-    font-size: 15px;
-    font-family: 'MiSansThai-Bold', sans-serif;
-    font-weight: 600;
-    cursor: pointer;
-    height: 100%;
-    transition: background 0.2s, color 0.2s;
-  }
-  .preset-btn.cancel:hover {
-    background: rgba(255,107,107,0.08);
-  }
 
-  .preset-btn.edit,
-  .preset-btn.cancel,
-  .preset-btn.delete {
-    min-width: unset;
-    width: auto;
-    padding: 4px 8px;
-    font-size: 18px;
-    font-weight: 600;
-    border-radius: 6px;
-    margin-right: -175px;
-    margin-left: 80px;
-    height: 32px;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    vertical-align: middle;
-  }
-  .preset-btn.edit:last-child,
-  .preset-btn.cancel:last-child,
-  .preset-btn.delete:last-child {
-    margin-right: 0;
-  }
+
+
+
 
   .preset-btn.add {
     color: #00e5ff;
@@ -4173,88 +4383,85 @@
     gap: 6px;
   }
   .add-preset-input {
-    width: 120px;
-    font-size: 15px;
-    font-family: 'MiSansThai-Bold', sans-serif;
+    flex: 1;
+    font-size: 16px;
+    font-family: 'MiSansThai', sans-serif;
+    font-weight: 600;
     color: #00e5ff;
-    background: #181a23;
-    border: 1.5px solid #00e5ff;
-    border-radius: 6px;
-    padding: 2px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
     outline: none;
-    transition: border 0.2s;
+    transition: all 0.2s;
+    box-shadow: none;
   }
   .add-preset-input:focus {
-    border-color: #00e5ff;
-    background: #10101a;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+  .add-preset-input::placeholder {
+    color: rgba(0, 229, 255, 0.5);
+    font-weight: 500;
   }
 
   .preset-item-btn.add {
     justify-content: center;
-    font-size: 28px;
-    font-family: 'MiSansThai-Bold', sans-serif;
-    font-weight: 700;
+    font-size: 36px;
+    font-weight: 600;
     color: #00e5ff;
-    background: rgba(0, 229, 255, 0.08);
-    border: 2.5px solid #00e5ff;
-    border-radius: 18px;
-    padding: 14px 28px;
-    margin-bottom: 16px;
-    width: 100%;
-    max-width: 100%;
+    background: rgba(0, 229, 255, 0.05);
+    border: 2px solid rgba(0, 229, 255, 0.18);
+    border-radius: 8px;
+    padding: 0px 28px;
+    margin-bottom: 12px;
+    width: calc(100% + 4px); /* เท่ากับปุ่มรายการ */
+    max-width: none; /* เท่ากับปุ่มรายการ */
     display: flex;
     align-items: center;
-    transition: background 0.2s, border 0.2s, box-shadow 0.2s;
-    box-shadow: 0 2px 12px 0 rgba(0,229,255,0.08);
+    transition: box-shadow 0.2s, background 0.2s, border 0.2s;
+    box-shadow: 0 1px 4px 0 rgba(0,229,255,0.04);
     outline: none;
     cursor: pointer;
   }
   .preset-item-btn.add:hover {
-    background: linear-gradient(90deg, #00e5ff 0%, #0a2540 100%);
-    color: #181a23;
-    border: 2.5px solid #00e5ff;
-    box-shadow: 0 4px 18px 0 rgba(0,229,255,0.18);
-    z-index: 2;
+    background: rgba(0, 229, 255, 0.15);
+    border-color: #00e5ff;
+    box-shadow: 0 4px 20px 0 rgba(0,229,255,0.2);
+    transform: translateY(-1px);
+    color: #00e5ff;
   }
   .add-preset-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    width: 100%;
-    padding: 2px 28px;
-    background: rgba(0, 229, 255, 0.08);
-    border: 2.5px solid #00e5ff;
-    border-radius: 18px;
-    margin-bottom: 16px;
+    width: calc(100% + 4px); /* เท่ากับปุ่มรายการ */
+    max-width: none; /* เท่ากับปุ่มรายการ */
+    padding: 8px 16px;
+    background: rgba(0, 229, 255, 0.05);
+    border: 2px solid rgba(0, 229, 255, 0.3);
+    border-radius: 8px;
+    margin-bottom: 12px;
     min-height: unset;
+    transition: all 0.2s ease;
   }
-  .preset-item-btn {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 8px 28px;
-    background: rgba(0, 229, 255, 0.08);
-    border: 2.5px solid #00e5ff;
-    border-radius: 18px;
-    margin-bottom: 16px;
-    cursor: pointer;
-    transition: background 0.2s, border 0.2s, box-shadow 0.2s;
-    box-shadow: 0 2px 12px 0 rgba(0,229,255,0.08);
-    outline: none;
-    min-height: unset;
+  .add-preset-row:hover {
+    background: rgba(0, 229, 255, 0.1);
+    border-color: #00e5ff;
   }
+  /* ลบ CSS ที่ซ้ำซ้อนออก */
   .preset-inline-actions {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 100px;
+    gap: 8px; /* ลด gap จาก 100px เป็น 8px */
     margin-left: auto;
     margin-right: -16px;
     flex-shrink: 0;
     height: 100%;
     align-self: center;
-    transform: translateY(6px);
+    transform: translateY(44px);
   }
   .preset-name {
     flex: 1 1 0%;
@@ -4267,12 +4474,7 @@
     align-items: center;
   }
 
-  .preset-item-btn.add {
-    padding: 2px 28px;
-    font-size: 38px;
-    font-weight: 700;
-    /* ...คง style เดิม... */
-  }
+  /* ลบ CSS ที่ซ้ำซ้อนออก */
 
   .modal-actions {
     display: flex;
@@ -4570,8 +4772,123 @@
     max-width: 416px !important;
     min-width: 416px !important;
     width: 416px !important;
-    min-height: calc(100% - 98px) !important;
-    height: calc(100% - 98px) !important;
+    min-height: calc(100% - 76px) !important;
+    height: calc(100% - 76px) !important;
+  }
+  
+  .donate-modal .modal-body {
+    padding: 8px 24px 19px 24px;
+    margin-top: 0px;
+  }
+  
+  /* Copy Modal Styles */
+  .copy-modal {
+    max-width: 450px !important;
+    min-width: 450px !important;
+    width: 450px !important;
+    max-height: calc(90vh + 8px) !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow-y: auto;
+  }
+  
+  .copy-success {
+    text-align: center;
+    padding: 20px 0;
+    max-height: calc(85vh - 160px);
+    overflow-y: auto;
+    margin-bottom: 20px;
+  }
+  
+
+  
+  .copy-success h3 {
+    font-size: 32px;
+    font-weight: 700;
+    color: #00e5ff;
+    margin-bottom: 16px;
+  }
+  
+  .copy-url-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  
+  .copy-url {
+    flex: 1;
+    background: rgba(0, 229, 255, 0.1);
+    border: 2px solid rgba(0, 229, 255, 0.3);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    color: #00e5ff;
+    word-break: break-all;
+    margin: 0;
+  }
+  
+  .copy-btn {
+    background: rgba(0, 229, 255, 0.1);
+    border: 2px solid rgba(0, 229, 255, 0.3);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 22px;
+    color: #00e5ff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .copy-btn:hover {
+    background: rgba(0, 229, 255, 0.2);
+    border-color: #00e5ff;
+    transform: translateY(-1px);
+  }
+  
+  .overlay-instructions {
+    text-align: left;
+    max-width: 100%;
+  }
+  
+  .overlay-instructions h4 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #00e5ff;
+    margin-bottom: 12px;
+    margin-top: 20px;
+  }
+  
+  .overlay-instructions ol {
+    margin-left: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .overlay-instructions li {
+    font-size: 16px;
+    color: #ffffff;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  
+  .overlay-instructions ul {
+    margin-left: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .overlay-instructions hr {
+    border: none;
+    border-top: 1px solid rgba(0, 229, 255, 0.3);
+    margin: 20px 0;
+  }
+  
+  .overlay-instructions strong {
+    color: #ff6b6b;
   }
 
   .donate-form {
@@ -4730,7 +5047,7 @@
     border-top: none !important;
     padding: 15px 20px;
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
   }
 
   .donate-preview p {

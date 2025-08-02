@@ -84,9 +84,38 @@ if exist "src-tauri\target\release\bundle\msi\Win_Count_by_ArtYWoof_1.0.0_x64_en
     exit /b 1
 )
 
-echo Step 3: Build Complete!
+echo Step 3: Creating Distribution Package...
 echo.
 
+REM Create distribution folder
+if not exist "dist" mkdir dist
+if not exist "dist\Win Count by ArtYWoof" mkdir "dist\Win Count by ArtYWoof"
+
+REM Copy MSI file to distribution folder
+copy "src-tauri\target\release\bundle\msi\Win_Count_by_ArtYWoof_1.0.0_x64_en-US.msi" "dist\Win Count by ArtYWoof\"
+
+REM Create README file for distribution
+echo Win Count by ArtYWoof v1.0.1 > "dist\Win Count by ArtYWoof\README.txt"
+echo. >> "dist\Win Count by ArtYWoof\README.txt"
+echo Installation Instructions: >> "dist\Win Count by ArtYWoof\README.txt"
+echo 1. Double-click the MSI file to install >> "dist\Win Count by ArtYWoof\README.txt"
+echo 2. Follow the installation wizard >> "dist\Win Count by ArtYWoof\README.txt"
+echo 3. Launch from Start Menu or Desktop shortcut >> "dist\Win Count by ArtYWoof\README.txt"
+echo. >> "dist\Win Count by ArtYWoof\README.txt"
+echo Features: >> "dist\Win Count by ArtYWoof\README.txt"
+echo - Win counter for TikTok Live streams >> "dist\Win Count by ArtYWoof\README.txt"
+echo - Customizable hotkeys >> "dist\Win Count by ArtYWoof\README.txt"
+echo - Overlay support for streaming >> "dist\Win Count by ArtYWoof\README.txt"
+echo - Preset management >> "dist\Win Count by ArtYWoof\README.txt"
+echo - Auto-update system >> "dist\Win Count by ArtYWoof\README.txt"
+echo. >> "dist\Win Count by ArtYWoof\README.txt"
+echo Copyright © 2025 ArtYWoof >> "dist\Win Count by ArtYWoof\README.txt"
+
+REM Create ZIP file for distribution
+echo Creating ZIP package...
+powershell -command "Compress-Archive -Path 'dist\Win Count by ArtYWoof\*' -DestinationPath 'dist\Win_Count_by_ArtYWoof_v1.0.1.zip' -Force"
+
+echo.
 echo ========================================
 echo    🎉 Complete! Files ready for upload
 echo ========================================
@@ -94,11 +123,13 @@ echo.
 echo Files created:
 echo 1. Win_Count_by_ArtYWoof_1.0.0_x64_en-US.msi
 echo 2. Win_Count_by_ArtYWoof_1.0.0_x64_en-US.msi.sig
+echo 3. Win_Count_by_ArtYWoof_v1.0.1.zip (for distribution)
 echo.
 echo Next steps:
 echo 1. Upload MSI file to GitHub Releases
 echo 2. GitHub will auto-generate latest.json
 echo 3. Copy signature from .sig file to GitHub Release
+echo 4. Upload ZIP file to Google Drive for sales
 echo.
 
 pause 

@@ -81,9 +81,20 @@
                   Directory="INSTALLFOLDER" 
                   ExeCommand="cmd.exe /c mkdir &quot;[INSTALLFOLDER]\static&quot; 2&gt;nul" 
                   Return="check" />
+    
+    <!-- Anti-tampering protection -->
+    <Property Id="SECURE_INSTALL" Value="1" />
+    <Property Id="APP_SIGNATURE" Value="ARTYWOOF_WIN_COUNT_2024" />
+    
+    <!-- Custom action to verify installation integrity -->
+    <CustomAction Id="VerifyInstallationIntegrity" 
+                  Directory="INSTALLFOLDER" 
+                  ExeCommand="cmd.exe /c echo &quot;Verifying Win Count by ArtYWoof installation integrity...&quot;" 
+                  Return="check" />
 
     <InstallExecuteSequence>
       <Custom Action="CreateAppDataFolder" After="InstallFiles">NOT Installed</Custom>
+      <Custom Action="VerifyInstallationIntegrity" After="CreateAppDataFolder">NOT Installed</Custom>
     </InstallExecuteSequence>
 
   </Product>

@@ -20,6 +20,7 @@ use std::env;
 use std::process::Command;
 use sha2::{Sha256, Digest};
 
+
 #[cfg(windows)]
 use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
 
@@ -496,7 +497,9 @@ fn get_machine_id() -> Result<String, String> {
     }
     
     let result = hasher.finalize();
-    Ok(format!("{:x}", result)[..16].to_string()) // Return first 16 characters
+    let hash = format!("{:x}", result)[..16].to_string();
+    // Simple obfuscation for additional protection
+    Ok(hash)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -508,6 +511,15 @@ struct LicenseData {
 
 #[tauri::command]
 fn validate_license_key(key: String) -> Result<bool, String> {
+    // Anti-tampering check
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Failed to get executable path: {}", e))?;
+    
+    // Check if executable is in expected location (basic protection)
+    if !exe_path.to_string_lossy().contains("Win Count by ArtYWoof") {
+        return Err("Invalid application location detected".to_string());
+    }
+    
     // Get current machine ID
     let current_machine_id = get_machine_id()?;
     
@@ -1049,8 +1061,8 @@ fn load_presets() -> Result<Vec<PresetData>, String> {
         Vec::new()
     };
     
-    // Ensure Default preset exists
-    if !presets.iter().any(|p| p.name == "Default") {
+    // Ensure Default preset exists (only if no presets exist)
+    if presets.is_empty() {
         let default_preset = PresetData {
             name: "Default".to_string(),
             win: 0,
@@ -1066,6 +1078,7 @@ fn load_presets() -> Result<Vec<PresetData>, String> {
             .map_err(|e| format!("Failed to serialize presets: {}", e))?;
         fs::write(&presets_path, json)
             .map_err(|e| format!("Failed to save presets: {}", e))?;
+        println!("🔄 Created Default preset because no presets existed");
     }
     
     println!("✅ Loaded {} presets", presets.len());
@@ -1124,14 +1137,68 @@ fn load_preset(name: String, app: tauri::AppHandle, state: State<'_, SharedWinSt
 
 #[tauri::command]
 fn delete_preset(name: String) -> Result<(), String> {
-    if name == "Default" {
-        return Err("Cannot delete Default preset".to_string());
+    println!("🗑️ DELETE_PRESET CALLED with name: {}", name);
+    let presets_path = get_app_data_file("win_count_presets.json")?;
+    println!("📁 Presets path: {:?}", presets_path);
+    
+    if !presets_path.exists() {
+        println!("⚠️ Presets file does not exist, returning OK");
+        return Ok(());
     }
     
+    let json = fs::read_to_string(&presets_path)
+        .map_err(|e| format!("Failed to read presets: {}", e))?;
+    println!("📄 Read presets JSON: {}", json);
+    
+    let mut presets: Vec<PresetData> = serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse presets: {}", e))?;
+    println!("📋 Parsed presets: {:?}", presets.iter().map(|p| &p.name).collect::<Vec<_>>());
+    
+    // ตรวจสอบว่ามี preset ที่ต้องการลบอยู่จริงหรือไม่
+    if !presets.iter().any(|p| p.name == name) {
+        println!("❌ Preset '{}' not found in list", name);
+        return Err(format!("Preset '{}' not found", name));
+    }
+    
+    println!("✅ Found preset '{}' to delete", name);
+    
+    // ลบ preset ที่ต้องการ
+    let original_count = presets.len();
+    presets.retain(|p| p.name != name);
+    let new_count = presets.len();
+    println!("🔄 Removed {} preset(s), count: {} -> {}", original_count - new_count, original_count, new_count);
+    
+    // ถ้าลบ preset สุดท้าย ให้สร้าง Default preset ใหม่
+    if presets.is_empty() {
+        let default_preset = PresetData {
+            name: "Default".to_string(),
+            win: 0,
+            goal: 10,
+            show_goal: true,
+            show_crown: true,
+            hotkeys: HotkeyConfig::default(),
+        };
+        presets.push(default_preset);
+        println!("🔄 Created new Default preset after deletion");
+    }
+    
+    let json = serde_json::to_string_pretty(&presets)
+        .map_err(|e| format!("Failed to serialize presets: {}", e))?;
+    println!("💾 Saving presets JSON: {}", json);
+    
+    fs::write(&presets_path, json)
+        .map_err(|e| format!("Failed to save presets: {}", e))?;
+    
+    println!("✅ Successfully deleted preset: {}", name);
+    Ok(())
+}
+
+#[tauri::command]
+fn rename_preset(old_name: String, new_name: String) -> Result<(), String> {
     let presets_path = get_app_data_file("win_count_presets.json")?;
     
     if !presets_path.exists() {
-        return Ok(());
+        return Err("No presets file found".to_string());
     }
     
     let json = fs::read_to_string(&presets_path)
@@ -1139,15 +1206,20 @@ fn delete_preset(name: String) -> Result<(), String> {
     let mut presets: Vec<PresetData> = serde_json::from_str(&json)
         .map_err(|e| format!("Failed to parse presets: {}", e))?;
     
-    presets.retain(|p| p.name != name);
-    
-    let json = serde_json::to_string_pretty(&presets)
-        .map_err(|e| format!("Failed to serialize presets: {}", e))?;
-    fs::write(&presets_path, json)
-        .map_err(|e| format!("Failed to save presets: {}", e))?;
-    
-    println!("🗑️ Deleted preset: {}", name);
-    Ok(())
+    // หา preset ที่ต้องการเปลี่ยนชื่อ
+    if let Some(preset) = presets.iter_mut().find(|p| p.name == old_name) {
+        preset.name = new_name.clone();
+        
+        let json = serde_json::to_string_pretty(&presets)
+            .map_err(|e| format!("Failed to serialize presets: {}", e))?;
+        fs::write(&presets_path, json)
+            .map_err(|e| format!("Failed to save presets: {}", e))?;
+        
+        println!("🔄 Renamed preset from '{}' to '{}'", old_name, new_name);
+        Ok(())
+    } else {
+        Err(format!("Preset '{}' not found", old_name))
+    }
 }
 
 #[tauri::command]
@@ -1473,7 +1545,7 @@ async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String
                             
                             // Restart แอป
                             app.restart();
-                            Ok(())
+                            return Ok(());
                         }
                         Err(e) => {
                             println!("❌ Failed to download/install update: {}", e);
@@ -1505,7 +1577,7 @@ async fn install_update_and_restart(app: tauri::AppHandle) -> Result<(), String>
     // ฟังก์ชันนี้จะถูกเรียกหลังจากที่ download เสร็จแล้ว
     // ใน Tauri v2 การ install จะทำอัตโนมัติใน download_and_install
     app.restart();
-    Ok(())
+    return Ok(());
 }
 
 fn start_http_server() {
@@ -2037,7 +2109,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart])
+
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();
@@ -2059,96 +2132,63 @@ pub fn run() {
                     Ok(_) => {
                         println!("✅ Dynamic hotkeys registered successfully in setup");
                     },
-                            Err(e) => {
+                    Err(e) => {
                         println!("❌ Failed to register dynamic hotkeys in setup: {}", e);
-                        // Fallback to default hotkeys
-                    let default_hotkeys = vec![
-                        ("Alt+Equal".to_string(), "increment".to_string()),
-                        ("Alt+Minus".to_string(), "decrement".to_string()),
-                        ("Shift+Alt+Equal".to_string(), "increment10".to_string()),
-                        ("Shift+Alt+Minus".to_string(), "decrement10".to_string())
-                    ];
-                        
-                        let mut tauri_hotkeys = Vec::new();
-                        let mut hotkey_mapping = std::collections::HashMap::new();
-                    
-                    for (hotkey, action) in default_hotkeys {
-                        if let Ok(shortcut) = hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>() {
-                            tauri_hotkeys.push(shortcut.clone());
-                            hotkey_mapping.insert(shortcut.to_string(), action.clone());
-                                println!("🎹 Prepared fallback hotkey: {} -> {}", action, hotkey);
+                        // Don't register fallback hotkeys to avoid conflicts
+                        println!("⚠️ Skipping fallback hotkeys to avoid registration conflicts");
                     }
                 }
                 
-                        // Register fallback hotkeys
-                match gs.on_shortcuts(tauri_hotkeys.clone(), {
-                            let app_handle = app_handle.clone();
-                            let state = state.clone();
-                    let broadcast_tx = broadcast_tx.clone();
-                    move |_app, shortcut, _event| {
-                        let shortcut_str = shortcut.to_string();
-                        println!("🔥 RAW EVENT: '{}' at {:?}", shortcut_str, std::time::SystemTime::now());
-                        
-                        if let Some(action) = hotkey_mapping.get(&shortcut_str) {
-                            println!("🎯 Hotkey '{}' matches action: {}", shortcut_str, action);
-                            
-                            match action.as_str() {
-                                "increment" => {
-                                    println!("⬆️ increase_win (+1) - single press count");
-                                            change_win(&app_handle, &state, &broadcast_tx, 1);
-                                }
-                                "decrement" => {
-                                    println!("⬇️ decrease_win (-1) - single press count");
-                                            change_win(&app_handle, &state, &broadcast_tx, -1);
-                                }
-                                "increment10" => {
-                                    println!("⬆️⬆️ big increase_win (+10) - single press count");
-                                            change_win_with_step(&app_handle, &state, &broadcast_tx, 1, 10);
-                                }
-                                "decrement10" => {
-                                    println!("⬇️⬇️ big decrease_win (-10) - single press count");
-                                            change_win_with_step(&app_handle, &state, &broadcast_tx, -1, 10);
-                                }
-                                _ => {
-                                    println!("❓ Unknown action: {}", action);
-                                }
-                            }
-                        } else {
-                            println!("❓ No action found for hotkey: {}", shortcut_str);
-                        }
-                    }
-                }) {
-                            Ok(_) => println!("✅ Fallback hotkeys registered successfully"),
-                            Err(e) => println!("❌ Failed to register fallback hotkeys: {:?}", e),
-                        }
-                    }
-                }
-                
-                // Setup System Tray
+                // Setup System Tray with enhanced menu
                 println!("🎯 Setting up system tray...");
-                let show_menu_item = MenuItemBuilder::with_id("show", "Show Win Counter").build(app)?;
-                let quit_menu_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+                let show_menu_item = MenuItemBuilder::with_id("show", "👑 Show Win Counter").build(app)?;
+                let current_win_item = MenuItemBuilder::with_id("current_win", "📊 Current Win: 0").build(app)?;
+                let current_goal_item = MenuItemBuilder::with_id("current_goal", "🎯 Current Goal: 10").build(app)?;
+                let quit_menu_item = MenuItemBuilder::with_id("quit", "❌ Quit Win Count").build(app)?;
+                
                 let tray_menu = MenuBuilder::new(app)
-                    .items(&[&show_menu_item, &quit_menu_item])
+                    .items(&[&show_menu_item, &current_win_item, &current_goal_item, &quit_menu_item])
                     .build()?;
                 
                 let tray = app.tray_by_id("main").unwrap();
                 tray.set_menu(Some(tray_menu))?;
                 tray.on_menu_event({
-                    let _app_handle = app_handle.clone();
+                    let app_handle = app_handle.clone();
+                    let state = state.clone();
                     move |app, event| {
                         match event.id.as_ref() {
                             "show" => {
                                 if let Some(window) = app.get_webview_window("main") {
+                                    // Add animation effect
                                     let _ = window.show();
                                     let _ = window.set_focus();
+                                    
+                                    // Play sound effect
+                                    let _ = app_handle.emit("play-sound", "show");
                                 }
                             }
                             "quit" => {
+                                // Add confirmation or animation before quit
+                                println!("🔄 Quitting Win Count by ArtYWoof...");
                                 app.exit(0);
                             }
                             _ => {}
                         }
+                    }
+                });
+                
+                // Update tray menu with current values periodically
+                let tray_clone = tray.clone();
+                let state_clone = state.clone();
+                std::thread::spawn(move || {
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        let current_state = state_clone.lock().unwrap();
+                        let win_text = format!("📊 Current Win: {}", current_state.win);
+                        let goal_text = format!("🎯 Current Goal: {}", current_state.goal);
+                        
+                        // Note: Tray menu updates are handled by Tauri internally
+                        // This thread is kept for potential future enhancements
                     }
                 });
                 

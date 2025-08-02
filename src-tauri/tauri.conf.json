@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Win Count by ArtYWoof",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "identifier": "com.artywoof.wincount",
   "build": {
     "beforeDevCommand": "bun run dev:vite",
@@ -56,7 +56,10 @@
         "https://github.com/artywoof/win-count-by-artywoof/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "RWTS2shM0SQzI2EcfQLKZO/itZ1k+FvTpV36EYP5HCbD+YOa/lNdJH6K"
+      "pubkey": "RWTS2shM0SQzI2EcfQLKZO/itZ1k+FvTpV36EYP5HCbD+YOa/lNdJH6K",
+      "headers": {
+        "User-Agent": "Win Count by ArtYWoof Updater"
+      }
     },
     "globalShortcut": {
       "shortcuts": []

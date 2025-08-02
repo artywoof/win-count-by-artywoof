@@ -3,7 +3,7 @@ name: 🚀 Auto Release - Win Count by ArtYWoof
 on:
   push:
     tags:
-      - 'v*.*.*'  # เช่น v1.0.0, v1.0.1, v2.0.0
+      - 'v1.0.0'  # เช่น v1.0.0, v1.0.1, v2.0.0
 
 env:
   CARGO_TERM_COLOR: always
