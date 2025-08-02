@@ -2109,6 +2109,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
 
         .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart])
         .setup({

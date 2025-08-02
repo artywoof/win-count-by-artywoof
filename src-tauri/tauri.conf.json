@@ -68,6 +68,7 @@
   "bundle": {
     "active": true,
     "targets": ["msi"],
+    "createUpdaterArtifacts": true,
     "publisher": "ArtYWoof",
     "copyright": "Copyright © 2025 ArtYWoof",
     "category": "Utility",
