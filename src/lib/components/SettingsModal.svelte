@@ -1,8 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import { checkUpdate, installUpdate, onUpdaterEvent } from '@tauri-apps/api/updater';
-  import { relaunch } from '@tauri-apps/api/process';
   import audioManager from '$lib/audioManager';
   import { hotkeySettings, keybindToString, type Keybind } from '$lib/stores';
   import { registerHotkeysFromSettings, getHotkeyConflicts } from '$lib/hotkeyManager';
@@ -76,14 +74,14 @@
       isCheckingUpdate = true;
       updateMessage = 'กำลังตรวจสอบอัปเดต...';
       
-      const { shouldUpdate, manifest } = await checkUpdate();
+      const updateInfo = await invoke('check_for_updates') as any;
 
-      if (shouldUpdate) {
+      if (updateInfo.available) {
         updateAvailable = true;
-        updateMessage = `พบเวอร์ชันใหม่ ${manifest?.version}! กำลังดาวน์โหลด...`;
+        updateMessage = `พบเวอร์ชันใหม่ ${updateInfo.version}! กำลังดาวน์โหลด...`;
 
-        // ดาวน์โหลดอัปเดต (Tauri จัดการให้เบื้องหลัง)
-        await installUpdate();
+        // ดาวน์โหลดอัปเดต
+        await invoke('download_and_install_update');
 
         // ดาวน์โหลดเสร็จแล้ว, ถามผู้ใช้เพื่อรีสตาร์ท
         updateMessage = 'ดาวน์โหลดเสร็จสิ้น! ต้องการรีสตาร์ทเพื่ออัปเดตเลยไหม?';
@@ -103,7 +101,7 @@
   async function restartAndInstall() {
     try {
       updateMessage = 'กำลังรีสตาร์ทเพื่อติดตั้งอัปเดต...';
-      await relaunch();
+      await invoke('install_update_and_restart');
     } catch (error) {
       console.error('Restart error:', error);
       updateMessage = 'เกิดข้อผิดพลาดในการรีสตาร์ท';
@@ -192,13 +190,23 @@
     
     isCheckingUpdate = true;
     try {
-      // Use Tauri's built-in updater dialog
-      await invoke('tauri', { cmd: 'updater', action: 'check' });
+      // Use our custom check_for_updates command
+      const updateInfo = await invoke('check_for_updates') as any;
       
-      console.log('✅ Update check completed');
-      dispatch('updateCheckCompleted');
+      console.log('✅ Update check completed:', updateInfo);
+      
+      if (updateInfo.available) {
+        updateAvailable = true;
+        updateMessage = `พบเวอร์ชันใหม่ ${updateInfo.version}!`;
+        dispatch('updateCheckCompleted');
+      } else {
+        updateAvailable = false;
+        updateMessage = 'คุณใช้เวอร์ชันล่าสุดแล้ว!';
+        dispatch('updateCheckCompleted');
+      }
     } catch (error) {
       console.error('❌ Failed to check for updates:', error);
+      updateMessage = 'เกิดข้อผิดพลาดในการตรวจสอบอัปเดต';
       dispatch('updateError', error);
     } finally {
       isCheckingUpdate = false;

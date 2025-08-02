@@ -873,24 +873,22 @@
     console.log('🔄 Starting update check...');
     
     try {
-      // Try to use Tauri's built-in updater
-      console.log('📡 Invoking Tauri updater...');
-      await invoke('tauri', { cmd: 'updater', action: 'check' });
+      // Use our custom check_for_updates command
+      console.log('📡 Invoking check_for_updates...');
+      const updateResult = await invoke('check_for_updates') as any;
       
-      console.log('✅ Update check completed successfully');
-      showNotification('✅ ตรวจสอบอัปเดตเสร็จสิ้น');
-    } catch (error) {
-      console.error('❌ Tauri updater failed:', error);
+      console.log('✅ Update check completed successfully:', updateResult);
       
-      // Fallback: show manual update message
-      showNotification('ℹ️ กรุณาตรวจสอบอัปเดตที่ GitHub Releases');
-      
-      // Open GitHub releases page
-      try {
-        window.open('https://github.com/artywoof/win-count-by-artywoof/releases', '_blank');
-      } catch (openError) {
-        console.error('❌ Failed to open GitHub releases:', openError);
+      if (updateResult.available) {
+        showNotification(`🔄 พบเวอร์ชันใหม่ ${updateResult.version}!`);
+        hasUpdate = true;
+        updateInfo = updateResult;
+      } else {
+        showNotification('✅ คุณใช้เวอร์ชันล่าสุดแล้ว!');
       }
+    } catch (error) {
+      console.error('❌ Update check failed:', error);
+      showNotification('❌ เกิดข้อผิดพลาดในการตรวจสอบอัปเดต');
     } finally {
       isCheckingUpdate = false;
     }
