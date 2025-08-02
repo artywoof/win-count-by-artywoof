@@ -82,10 +82,6 @@
     ],
     "resources": [
       "../static"
-    ],
-    "signing": {
-      "identity": null,
-      "timestamp": true
-    }
+    ]
   }
 }
