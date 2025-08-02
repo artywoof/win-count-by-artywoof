@@ -40,7 +40,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}  # เพิ่มบรรทัดนี้
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
         with:
           tagName: ${{ steps.get_version.outputs.VERSION }}
           releaseName: 'Win Count ${{ steps.get_version.outputs.VERSION }}'
@@ -73,7 +73,7 @@ jobs:
             **Note:** Auto-update is now enabled!
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true  # เปลี่ยนจาก false เป็น true
+          includeUpdaterJson: true
 
       - name: ✅ Release Summary
         run: |

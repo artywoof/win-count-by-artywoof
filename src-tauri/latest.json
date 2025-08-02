@@ -1,0 +1,11 @@
+{
+  "version": "1.0.1",
+  "notes": "Initial release of Win Count by ArtYWoof",
+  "pub_date": "2025-01-01T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "placeholder-signature",
+      "url": "https://github.com/artywoof/win-count-by-artywoof/releases/download/v1.0.1/Win_Count_by_ArtYWoof_1.0.1_x64_en-US.msi"
+    }
+  }
+} 
