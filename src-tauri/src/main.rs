@@ -22,7 +22,7 @@ use sha2::{Sha256, Digest};
 
 // เพิ่ม license module
 mod license;
-use license::*;
+use license::{LicenseData, get_machine_id, activate_license, load_license, check_license_status};
 
 #[cfg(windows)]
 use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
@@ -460,57 +460,9 @@ fn save_custom_hotkeys(hotkeys: &std::collections::HashMap<String, String>) -> R
         .map_err(|e| format!("Failed to save hotkeys: {}", e))
 }
 
-#[tauri::command]
-fn get_machine_id() -> Result<String, String> {
-    let mut hasher = Sha256::new();
-    
-    // Get computer name
-    if let Ok(computer_name) = env::var("COMPUTERNAME") {
-        hasher.update(computer_name.as_bytes());
-    }
-    
-    // Get user name
-    if let Ok(user_name) = env::var("USERNAME") {
-        hasher.update(user_name.as_bytes());
-    }
-    
-    // Get Windows product ID (if available)
-    #[cfg(windows)]
-    {
-        if let Ok(output) = Command::new("wmic").args(&["csproduct", "get", "UUID", "/value"]).output() {
-            if let Ok(output_str) = String::from_utf8(output.stdout) {
-                if let Some(uuid_line) = output_str.lines().find(|line| line.starts_with("UUID=")) {
-                    if let Some(uuid) = uuid_line.split('=').nth(1) {
-                        hasher.update(uuid.as_bytes());
-                    }
-                }
-            }
-        }
-    }
-    
-    // Get processor info
-    if let Ok(output) = Command::new("wmic").args(&["cpu", "get", "ProcessorId", "/value"]).output() {
-        if let Ok(output_str) = String::from_utf8(output.stdout) {
-            if let Some(processor_line) = output_str.lines().find(|line| line.starts_with("ProcessorId=")) {
-                if let Some(processor_id) = processor_line.split('=').nth(1) {
-                    hasher.update(processor_id.as_bytes());
-                }
-            }
-        }
-    }
-    
-    let result = hasher.finalize();
-    let hash = format!("{:x}", result)[..16].to_string();
-    // Simple obfuscation for additional protection
-    Ok(hash)
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LicenseData {
-    key: String,
-    machine_id: String,
-    activated_at: String,
-}
+
+
 
 #[tauri::command]
 fn validate_license_key(key: String) -> Result<bool, String> {
@@ -1590,12 +1542,12 @@ async fn get_machine_id_command() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn activate_license_command(license_key: String) -> Result<LicenseInfo, String> {
+async fn activate_license_command(license_key: String) -> Result<LicenseData, String> {
     license::activate_license(&license_key).await
 }
 
 #[tauri::command]
-async fn check_license_command() -> Result<LicenseInfo, String> {
+async fn check_license_command() -> Result<LicenseData, String> {
     license::load_license()
 }
 
