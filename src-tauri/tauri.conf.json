@@ -56,7 +56,7 @@
         "https://github.com/artywoof/win-count-by-artywoof/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc1QzE5QkRGQzQyNDQ1NkEKUldScVJTVEUzNXZCZGFIWWlTQlFQa3hLMGsvZHcreWJvMHZWM0RjbWdCcktRMldWOVVjQ09Ha0gK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5OThFQjZCN0VBRDI2NDUKUldSRkpxMSthK3VZbWY5ZURjQlJqMzBqU21CbzIwSktzL2Niai9sSWRQYlRpeCtkKzVtaFFRb2UK",
       "headers": {
         "User-Agent": "Win Count by ArtYWoof Updater"
       }
