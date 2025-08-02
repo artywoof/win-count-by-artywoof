@@ -1,60 +1,17 @@
-name: 🚀 Auto Release - Win Count by ArtYWoof
+# .github/workflows/release.yml
+# ชั่วคราว: ปิด auto-updater เพื่อให้ build ผ่านก่อน
+name: 🚀 Release Win Count (No Auto-Update)
 
 on:
   push:
     tags:
-      - 'v1.0.0'  # เช่น v1.0.0, v1.0.1, v2.0.0
+      - 'v*.*.*'
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
+permissions:
+  contents: write
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    outputs:
-      release_id: ${{ steps.create-release.outputs.result }}
-      release_upload_url: ${{ steps.create-release.outputs.upload_url }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: 🏷️ Get version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-        
-      - name: 📝 Create Release
-        id: create-release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: '${{ steps.get_version.outputs.VERSION }}',
-              name: 'Win Count ${{ steps.get_version.outputs.VERSION }}',
-              body: `## 🎉 Win Count by ArtYWoof ${{ steps.get_version.outputs.VERSION }}
-              
-              ### ✨ What's New:
-              - Performance improvements
-              - Bug fixes and stability updates
-              - Enhanced user experience
-              
-              ### 📥 Installation:
-              Download the \`.msi\` file below and run it to install or update Win Count.
-              
-              ### 🔄 Auto-Update:
-              If you have an older version installed, the app will automatically notify you about this update.
-              
-              ---
-              
-              **Full Changelog**: https://github.com/${{ github.repository }}/compare/v1.0.0...${{ steps.get_version.outputs.VERSION }}`,
-              draft: false,
-              prerelease: false
-            });
-            return data.id;
-
-  build-windows:
-    needs: create-release
+  build-and-release:
     runs-on: windows-latest
     
     steps:
@@ -68,29 +25,6 @@ jobs:
 
       - name: 🦀 Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: 📦 Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: 📦 Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
 
       - name: 🔧 Install dependencies
         run: bun install
@@ -103,141 +37,48 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: 📱 Build Tauri app with updater
+      - name: 📱 Build Tauri app (No Updater)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ""  # ถ้าไม่มี password ใน key
         with:
           tagName: ${{ steps.get_version.outputs.VERSION }}
           releaseName: 'Win Count ${{ steps.get_version.outputs.VERSION }}'
           releaseBody: |
-            🎉 Win Count by ArtYWoof ${{ steps.get_version.outputs.VERSION }}
+            ## 🎉 Win Count by ArtYWoof ${{ steps.get_version.outputs.VERSION }}
             
-            ✨ **New in this version:**
-            - Enhanced performance and stability
-            - Bug fixes and improvements
-            - Better user experience
+            ### ✨ Features:
+            - Real-time win counter for TikTok Live streaming
+            - Customizable hotkeys and presets
+            - System tray integration
+            - Overlay support for streaming software
             
-            📥 **How to install:**
+            ### 📥 Installation:
             1. Download the `.msi` file below
-            2. Run it as Administrator
+            2. Run as Administrator
             3. Follow the installation wizard
+            4. Launch from Start Menu or Desktop shortcut
             
-            🔄 **Auto-update available:**
-            The app will automatically check for updates and notify you when new versions are available.
+            ### 🎯 How to Use:
+            1. Set your win goal
+            2. Use hotkeys to increase/decrease wins
+            3. Copy overlay link for TikTok Live Studio
+            4. Customize settings as needed
+            
+            ---
+            
+            **Note:** Auto-update will be enabled in future releases.
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
-          updaterJsonPreferNsis: false
-          updaterJsonKeepUniversal: false
+          includeUpdaterJson: false  # ปิด updater ชั่วคราว
 
-  # Job สำหรับทดสอบ auto-update หลัง release
-  test-release:
-    needs: [create-release, build-windows]
-    runs-on: ubuntu-latest
-    if: success()
-    
-    steps:
-      - name: ✅ Verify release files
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data: release } = await github.rest.repos.getRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: ${{ needs.create-release.outputs.release_id }}
-            });
-            
-            console.log('📋 Release created:', release.name);
-            console.log('🔗 Release URL:', release.html_url);
-            console.log('📦 Assets count:', release.assets.length);
-            
-            // ตรวจสอบว่ามีไฟล์ที่จำเป็น
-            const requiredFiles = ['.msi', '.msi.sig', 'latest.json'];
-            const assetNames = release.assets.map(asset => asset.name);
-            
-            for (const fileType of requiredFiles) {
-              const found = assetNames.some(name => name.includes(fileType));
-              if (found) {
-                console.log('✅ Found', fileType, 'file');
-              } else {
-                console.log('❌ Missing', fileType, 'file');
-                throw new Error(`Missing required file: ${fileType}`);
-              }
-            }
-            
-            console.log('🎉 All required files are present!');
-
-      - name: 🔍 Check updater JSON
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const https = require('https');
-            
-            const downloadUrl = `https://github.com/${{ github.repository }}/releases/latest/download/latest.json`;
-            
-            // รอสักครู่ให้ GitHub CDN อัปเดต
-            await new Promise(resolve => setTimeout(resolve, 30000));
-            
-            try {
-              const response = await fetch(downloadUrl);
-              if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-              }
-              
-              const latestJson = await response.json();
-              console.log('📄 latest.json content:', JSON.stringify(latestJson, null, 2));
-              
-              // ตรวจสอบ structure
-              if (!latestJson.version) throw new Error('Missing version in latest.json');
-              if (!latestJson.platforms) throw new Error('Missing platforms in latest.json');
-              if (!latestJson.platforms['windows-x86_64']) throw new Error('Missing windows-x86_64 platform');
-              
-              console.log('✅ latest.json is valid!');
-              console.log('🏷️ Version:', latestJson.version);
-              console.log('📅 Published:', latestJson.pub_date);
-              
-            } catch (error) {
-              console.error('❌ Failed to verify latest.json:', error.message);
-              // ไม่ fail job เพราะอาจจะยัง propagate ไม่ทัน
-              console.log('⚠️ This might be temporary - CDN propagation delay');
-            }
-
-  # Notification job
-  notify-completion:
-    needs: [create-release, build-windows, test-release]
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-      - name: 🎉 Release Summary
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data: release } = await github.rest.repos.getRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: ${{ needs.create-release.outputs.release_id }}
-            });
-            
-            const status = '${{ needs.build-windows.result }}' === 'success' ? '✅ SUCCESS' : '❌ FAILED';
-            const emoji = '${{ needs.build-windows.result }}' === 'success' ? '🎉' : '💥';
-            
-            console.log(`${emoji} Release Status: ${status}`);
-            console.log(`🏷️ Version: ${release.tag_name}`);
-            console.log(`🔗 Release URL: ${release.html_url}`);
-            console.log(`📦 Assets: ${release.assets.length} files`);
-            
-            if ('${{ needs.build-windows.result }}' === 'success') {
-              console.log('');
-              console.log('🎯 Next Steps:');
-              console.log('1. Test the auto-update functionality');
-              console.log('2. Verify the MSI installer works correctly');
-              console.log('3. Check that latest.json is accessible');
-              console.log('');
-              console.log('🔄 Auto-update endpoint:');
-              console.log(`https://github.com/${{ github.repository }}/releases/latest/download/latest.json`);
-            } 
+      - name: ✅ Release Summary
+        run: |
+          echo "🎉 Release ${{ steps.get_version.outputs.VERSION }} completed!"
+          echo "📦 MSI installer created successfully"
+          echo "🔗 Download: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.VERSION }}"
+          echo ""
+          echo "📋 Next Steps:"
+          echo "1. Test the MSI installer"
+          echo "2. Setup minisign keys for auto-update"
+          echo "3. Enable auto-update in future releases" 
