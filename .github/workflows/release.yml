@@ -44,38 +44,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ steps.get_version.outputs.VERSION }}
-          releaseName: 'Win Count ${{ steps.get_version.outputs.VERSION }}'
+          includeUpdaterJson: true
+          includeDebug: false
+          includeRelease: true
           releaseBody: |
             ## 🎉 Win Count by ArtYWoof ${{ steps.get_version.outputs.VERSION }}
             
-            ### ✨ Features:
-            - Real-time win counter for TikTok Live streaming
-            - Customizable hotkeys and presets
-            - System tray integration
-            - Overlay support for streaming software
+            ### 📥 Download:
+            - **Windows:** Download the `.msi` file below
+            - **Auto-Update:** Existing users will be notified automatically
             
-            ### 📥 Installation:
-            1. Download the `.msi` file below
-            2. Run as Administrator
-            3. Follow the installation wizard
-            4. Launch from Start Menu or Desktop shortcut
-            
-            ### 🎯 How to Use:
-            1. Set your win goal
-            2. Use hotkeys to increase/decrease wins
-            3. Copy overlay link for TikTok Live Studio
-            4. Customize settings as needed
-            
-            ### 🔄 Auto-Update:
-            The app will automatically check for updates and notify you when new versions are available.
+            ### 🔄 Installation:
+            1. Download the MSI installer
+            2. Run as Administrator  
+            3. Follow installation wizard
+            4. Launch from Start Menu
             
             ---
             
-            **Note:** Auto-update is now enabled!
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: true
+            **🚀 Auto-update enabled!**
 
       - name: ✅ Release Summary
         run: |
