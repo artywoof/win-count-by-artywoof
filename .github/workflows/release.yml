@@ -1,6 +1,5 @@
 # .github/workflows/release.yml
-# ชั่วคราว: ปิด auto-updater เพื่อให้ build ผ่านก่อน
-name: 🚀 Release Win Count (No Auto-Update)
+name: 🚀 Release Win Count by ArtYWoof
 
 on:
   push:
@@ -37,10 +36,11 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: 📱 Build Tauri app (No Updater)
+      - name: 📱 Build Tauri app with Auto-Update
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}  # เพิ่มบรรทัดนี้
         with:
           tagName: ${{ steps.get_version.outputs.VERSION }}
           releaseName: 'Win Count ${{ steps.get_version.outputs.VERSION }}'
@@ -65,20 +65,23 @@ jobs:
             3. Copy overlay link for TikTok Live Studio
             4. Customize settings as needed
             
+            ### 🔄 Auto-Update:
+            The app will automatically check for updates and notify you when new versions are available.
+            
             ---
             
-            **Note:** Auto-update will be enabled in future releases.
+            **Note:** Auto-update is now enabled!
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: false  # ปิด updater ชั่วคราว
+          includeUpdaterJson: true  # เปลี่ยนจาก false เป็น true
 
       - name: ✅ Release Summary
         run: |
           echo "🎉 Release ${{ steps.get_version.outputs.VERSION }} completed!"
           echo "📦 MSI installer created successfully"
+          echo "🔐 Digital signature applied"
+          echo "📄 latest.json generated for auto-update"
           echo "🔗 Download: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.VERSION }}"
           echo ""
-          echo "📋 Next Steps:"
-          echo "1. Test the MSI installer"
-          echo "2. Setup minisign keys for auto-update"
-          echo "3. Enable auto-update in future releases" 
+          echo "✅ Auto-update is now enabled!"
+          echo "🔄 Users will receive update notifications automatically" 

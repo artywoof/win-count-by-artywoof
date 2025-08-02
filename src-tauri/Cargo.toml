@@ -1,6 +1,6 @@
 [package]
 name = "win-count-by-artywoof"
-version = "1.0.0"  # 🎯 Version หลัก - อัพเดทตรงนี้เมื่อ release
+version = "1.0.1"  # 🎯 Version หลัก - อัพเดทตรงนี้เมื่อ release
 description = "Win Counter for TikTok Live Streamers by ArtYWoof"
 authors = ["ArtYWoof <your-email@example.com>"]
 license = "MIT"
