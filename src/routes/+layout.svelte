@@ -70,6 +70,8 @@
     box-sizing: border-box;
     z-index: 50;
     animation: smooth-rotate 8s linear infinite;
+    pointer-events: none;
+    isolation: isolate;
   }
   
   .gradient-border-container > div {
@@ -78,6 +80,8 @@
     margin: 0;
     width: calc(100% - 0px);
     height: calc(100% - 0px);
+    pointer-events: auto;
+    isolation: isolate;
   }
   
   @keyframes smooth-rotate {

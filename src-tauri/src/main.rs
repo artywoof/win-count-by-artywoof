@@ -17,12 +17,9 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::accept_async;
 use serde_json;
 use std::env;
-use std::process::Command;
-use sha2::{Sha256, Digest};
+use sha2::Sha256;
 
-// เพิ่ม license module
-mod license;
-use license::{LicenseData, get_machine_id, activate_license, load_license, check_license_status};
+// License system removed
 
 #[cfg(windows)]
 use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
@@ -60,49 +57,120 @@ fn get_app_version() -> String {
 }
 
 // License management functions
+const LICENSE_SERVER_URL: &str = "https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api";
+
 #[tauri::command]
-fn get_license_key() -> Result<String, String> {
-    let license_path = get_app_data_file("win_count_license.json")?;
-    if license_path.exists() {
-        let license_data_str = fs::read_to_string(license_path)
-            .map_err(|_| "No license key found".to_string())?;
-        
-        let license_data: LicenseData = serde_json::from_str(&license_data_str)
-            .map_err(|_| "Invalid license data format".to_string())?;
-        
-        Ok(license_data.key)
+async fn validate_license_key(license_key: String) -> Result<bool, String> {
+    println!("🔑 Validating license key: {}", license_key);
+    
+    // Get machine ID
+    let machine_id = get_machine_id()?;
+    
+    // Prepare request to license server
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&format!("{}/verify-license", LICENSE_SERVER_URL))
+        .header("Content-Type", "application/json")
+        .body(format!(
+            r#"{{"license_key":"{}","machine_id":"{}"}}"#,
+            license_key, machine_id
+        ))
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+    
+    let status = response.status();
+    let body = response.text().await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    
+    println!("🔑 License server response: {} - {}", status, body);
+    
+    if status.is_success() {
+        // Parse response to check if license is valid
+        match serde_json::from_str::<serde_json::Value>(&body) {
+            Ok(json) => {
+                // Check for success field first
+                if let Some(success) = json.get("success").and_then(|v| v.as_bool()) {
+                    Ok(success)
+                } else if let Some(valid) = json.get("valid").and_then(|v| v.as_bool()) {
+                    // Fallback to "valid" field
+                    Ok(valid)
+                } else if let Some(status) = json.get("status").and_then(|v| v.as_str()) {
+                    // Check status field
+                    Ok(status == "valid" || status == "success")
+                } else {
+                    // If no clear success indicator, check if response contains positive indicators
+                    let body_lower = body.to_lowercase();
+                    if body_lower.contains("valid") || body_lower.contains("success") || body_lower.contains("true") {
+                        Ok(true)
+                    } else {
+                        Ok(false)
+                    }
+                }
+            }
+            Err(e) => {
+                println!("❌ Failed to parse JSON response: {}", e);
+                Ok(false)
+            }
+        }
     } else {
-        Err("No license key found".to_string())
+        println!("❌ License server returned error status: {}", status);
+        Ok(false)
     }
 }
 
 #[tauri::command]
 fn save_license_key(key: String) -> Result<(), String> {
-    let machine_id = get_machine_id()?;
+    println!("💾 Saving license key: {}", key);
     
-    let license_data = LicenseData {
-        key: key.clone(),
-        machine_id: machine_id,
-        activated_at: chrono::Utc::now().to_rfc3339(),
-    };
+    // Save to app data directory
+    let license_path = get_app_data_file("win_count_license.json")?;
+    let license_data = serde_json::json!({
+        "license_key": key,
+        "saved_at": chrono::Utc::now().to_rfc3339(),
+        "machine_id": get_machine_id()?
+    });
     
-    let license_json = serde_json::to_string(&license_data)
+    let license_json = serde_json::to_string_pretty(&license_data)
         .map_err(|e| format!("Failed to serialize license data: {}", e))?;
     
-    let license_path = get_app_data_file("win_count_license.json")?;
     fs::write(license_path, license_json)
-        .map_err(|e| format!("Failed to save license key: {}", e))
+        .map_err(|e| format!("Failed to save license key: {}", e))?;
+    
+    println!("✅ License key saved successfully");
+    Ok(())
 }
 
 #[tauri::command]
-fn remove_license_key() -> Result<(), String> {
-    let license_path = get_app_data_file("win_count_license.json")?;
-    if license_path.exists() {
-        fs::remove_file(license_path)
-            .map_err(|e| format!("Failed to remove license key: {}", e))
-    } else {
-        Ok(())
+fn get_machine_id() -> Result<String, String> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::env;
+    
+    // Create a unique machine identifier based on system information
+    let mut hasher = DefaultHasher::new();
+    
+    // Use computer name and username as base
+    let computer_name = env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string());
+    let user_name = env::var("USERNAME").unwrap_or_else(|_| "unknown".to_string());
+    
+    computer_name.hash(&mut hasher);
+    user_name.hash(&mut hasher);
+    
+    // Add some system-specific information
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("wmic").args(&["csproduct", "get", "UUID"]).output() {
+            if let Ok(uuid) = String::from_utf8(output.stdout) {
+                uuid.hash(&mut hasher);
+            }
+        }
     }
+    
+    let machine_id = format!("{:x}", hasher.finish());
+    println!("🖥️ Generated machine ID: {}", machine_id);
+    Ok(machine_id)
 }
 
 #[tauri::command]
@@ -464,58 +532,7 @@ fn save_custom_hotkeys(hotkeys: &std::collections::HashMap<String, String>) -> R
 
 
 
-#[tauri::command]
-fn validate_license_key(key: String) -> Result<bool, String> {
-    // Anti-tampering check
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Failed to get executable path: {}", e))?;
-    
-    // Check if executable is in expected location (basic protection)
-    if !exe_path.to_string_lossy().contains("Win Count by ArtYWoof") {
-        return Err("Invalid application location detected".to_string());
-    }
-    
-    // Get current machine ID
-    let current_machine_id = get_machine_id()?;
-    
-    // Load existing license data
-    let license_path = get_app_data_file("win_count_license.json")?;
-    if license_path.exists() {
-        if let Ok(license_data_str) = fs::read_to_string(&license_path) {
-            if let Ok(license_data) = serde_json::from_str::<LicenseData>(&license_data_str) {
-                // Check if this is the same machine
-                if license_data.machine_id == current_machine_id {
-                    // Check if the key is valid
-                    let valid_key = "ARTY-WOOF-2024-WIN";
-                    return Ok(license_data.key == valid_key);
-                } else {
-                    return Err("License key is already activated on another machine".to_string());
-                }
-            }
-        }
-    }
-    
-    // If no existing license, this is a new activation
-    let valid_key = "ARTY-WOOF-2024-WIN";
-    if key == valid_key {
-        // Save license data with machine ID
-        let license_data = LicenseData {
-            key: key.clone(),
-            machine_id: current_machine_id,
-            activated_at: chrono::Utc::now().to_rfc3339(),
-        };
-        
-        let license_json = serde_json::to_string(&license_data)
-            .map_err(|e| format!("Failed to serialize license data: {}", e))?;
-        
-        fs::write(&license_path, license_json)
-            .map_err(|e| format!("Failed to save license data: {}", e))?;
-        
-        Ok(true)
-    } else {
-        Ok(false)
-    }
-}
+// License system removed
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WinState {
@@ -1500,7 +1517,7 @@ async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String
                             
                             // Restart แอป
                             app.restart();
-                            return Ok(());
+                            Ok(())
                         }
                         Err(e) => {
                             println!("❌ Failed to download/install update: {}", e);
@@ -1532,34 +1549,10 @@ async fn install_update_and_restart(app: tauri::AppHandle) -> Result<(), String>
     // ฟังก์ชันนี้จะถูกเรียกหลังจากที่ download เสร็จแล้ว
     // ใน Tauri v2 การ install จะทำอัตโนมัติใน download_and_install
     app.restart();
-    return Ok(());
+    Ok(())
 }
 
-// เพิ่ม License Commands ใหม่
-#[tauri::command]
-async fn get_machine_id_command() -> Result<String, String> {
-    license::get_machine_id()
-}
-
-#[tauri::command]
-async fn activate_license_command(license_key: String) -> Result<LicenseData, String> {
-    license::activate_license(&license_key).await
-}
-
-#[tauri::command]
-async fn check_license_command() -> Result<LicenseData, String> {
-    license::load_license()
-}
-
-#[tauri::command]
-async fn verify_license_command() -> Result<bool, String> {
-    license::check_license_status().await
-}
-
-#[tauri::command]
-async fn remove_license_command() -> Result<(), String> {
-    license::remove_license()
-}
+// License system removed
 
 fn start_http_server() {
     thread::spawn(move || {
@@ -1583,70 +1576,43 @@ fn start_http_server() {
                 }
             }
             
-            // Debug: Check if static folder exists
+            // Debug: Check if static folder exists (simplified)
             let static_paths = vec![
-                "static",
-                "../static", 
-                "./static",
-                "../../static",
-                "resources/static",
-                "resources/static/overlay.html",  // Direct file check
-                "C:\\Program Files\\Win Count by ArtYWoof\\static",
-                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
+                "../static",  // Development path
+                "static"      // Fallback path
+            ];
+            
+            let mut static_found = false;
+            for path in &static_paths {
+                if std::path::Path::new(path).exists() {
+                    println!("✅ Static folder found at: {}", path);
+                    static_found = true;
+                    if let Ok(entries) = std::fs::read_dir(path) {
+                        for entry in entries {
+                            if let Ok(entry) = entry {
+                                println!("   📄 {:?}", entry.file_name());
+                            }
+                        }
+                    }
+                    break; // Found the static folder, no need to check others
+                }
+            }
+            
+            if !static_found {
+                println!("⚠️  Static folder not found in common locations");
+            }
+            
+            // MSI installation paths check (simplified)
+            let msi_paths = vec![
                 "C:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
                 "C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static"
             ];
             
-            for path in &static_paths {
-                if std::path::Path::new(path).exists() {
-                    println!("✅ Static folder found at: {}", path);
-                    if let Ok(entries) = std::fs::read_dir(path) {
-                        for entry in entries {
-                            if let Ok(entry) = entry {
-                                println!("   📄 {:?}", entry.file_name());
-                            }
-                        }
-                    }
-                } else {
-                    println!("❌ Static folder not found at: {}", path);
-                }
-            }
-            
-            // Debug: Check MSI installation paths
-            let msi_paths = vec![
-                "C:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
-                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static",
-                "C:\\Program Files\\Win Count by ArtYWoof\\static",
-                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
-                "C:\\Program Files\\Win Count by ArtYWoof\\_up_\\static",
-                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\_up_\\static",
-                "D:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
-                "D:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static",
-                "D:\\Program Files\\Win Count by ArtYWoof\\static",
-                "D:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
-                "E:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
-                "E:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static",
-                "E:\\Program Files\\Win Count by ArtYWoof\\static",
-                "E:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
-                "F:\\Program Files\\Win Count by ArtYWoof\\resources\\static",
-                "F:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static",
-                "F:\\Program Files\\Win Count by ArtYWoof\\static",
-                "F:\\Program Files (x86)\\Win Count by ArtYWoof\\static",
-                // Add paths for executable directory
-                "C:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
-                "C:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
-                "D:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
-                "D:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
-                "E:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
-                "E:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
-                "F:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static",
-                "F:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static"
-            ];
-            
-            println!("🔍 Checking MSI installation paths:");
+            let mut msi_found = false;
             for path in &msi_paths {
                 if std::path::Path::new(path).exists() {
                     println!("✅ MSI path found: {}", path);
+                    msi_found = true;
                     if let Ok(entries) = std::fs::read_dir(path) {
                         for entry in entries {
                             if let Ok(entry) = entry {
@@ -1654,9 +1620,12 @@ fn start_http_server() {
                             }
                         }
                     }
-                } else {
-                    println!("❌ MSI path not found: {}", path);
+                    break; // Found MSI path, no need to check others
                 }
+            }
+            
+            if !msi_found {
+                println!("ℹ️  MSI installation not found (normal for development)");
             }
             
             let listener = TcpListener::bind("127.0.0.1:777").await.unwrap();
@@ -1807,7 +1776,6 @@ fn start_http_server() {
                                         }
                                         
                                         let mut asset_content = None;
-                                        let mut found_path = String::new();
                                         
                                         for path in asset_paths {
                                             match std::fs::read(&path) {
@@ -1815,7 +1783,6 @@ fn start_http_server() {
                                                     println!("✅ Found asset at: {}", path);
                                                     println!("   📏 File size: {} bytes", content.len());
                                                     asset_content = Some(content);
-                                                    found_path = path;
                                                     break;
                                                 }
                                                 Err(e) => {
@@ -2092,7 +2059,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
 
-        .invoke_handler(tauri::generate_handler![greet, get_app_version, get_license_key, save_license_key, remove_license_key, validate_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart, get_machine_id_command, activate_license_command, check_license_command, verify_license_command, remove_license_command])
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, validate_license_key, save_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();
@@ -2210,3 +2177,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

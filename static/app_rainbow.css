@@ -284,37 +284,9 @@ body {
 }
 
 /* Force remove borders and focus outlines */
-button, input, select, textarea {
+button, input, select, textarea, div, span {
   border: none !important;
   outline: none !important;
-}
-
-/* Preserve modal border */
-.license-modal {
-  border: 2px solid #00ffff !important;
-  outline: none !important;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.3) !important;
-}
-
-/* Prevent focus from removing border */
-.license-modal:focus,
-.license-modal:focus-within {
-  border: 2px solid #00ffff !important;
-  outline: none !important;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.3) !important;
-}
-
-/* Preserve rainbow border for main container */
-.gradient-border-container {
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-  isolation: isolate !important;
-}
-
-/* Ensure modal doesn't interfere with rainbow border */
-.modal-backdrop, .license-modal {
-  isolation: isolate !important;
 }
 
 /* Global drag settings */

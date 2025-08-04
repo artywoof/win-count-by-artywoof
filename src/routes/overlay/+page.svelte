@@ -488,27 +488,15 @@
 		border-radius: 37px;
 		--rotation: 0deg;
 		background: conic-gradient(from var(--rotation), 
-			rgba(255, 0, 128, 0.7) 0%,    /* Hot Pink */
-			rgba(255, 31, 0, 0.7) 5%,     /* Red-Orange */
-			rgba(255, 64, 0, 0.7) 10%,    /* Orange */
-			rgba(255, 96, 0, 0.7) 15%,    /* Deep Orange */
-			rgba(255, 128, 0, 0.7) 20%,   /* Golden Orange */
-			rgba(255, 170, 0, 0.7) 25%,   /* Gold */
-			rgba(255, 212, 0, 0.7) 30%,   /* Yellow Gold */
-			rgba(255, 255, 0, 0.7) 35%,   /* Pure Yellow */
-			rgba(204, 255, 0, 0.7) 40%,   /* Lime Yellow */
-			rgba(128, 255, 0, 0.7) 45%,   /* Lime Green */
-			rgba(64, 255, 0, 0.7) 50%,    /* Bright Green */
-			rgba(0, 255, 64, 0.7) 55%,    /* Green Cyan */
-			rgba(0, 255, 128, 0.7) 60%,   /* Aqua Green */
-			rgba(0, 255, 204, 0.7) 65%,   /* Turquoise */
-			rgba(0, 204, 255, 0.7) 70%,   /* Sky Blue */
-			rgba(0, 128, 255, 0.7) 75%,   /* Bright Blue */
-			rgba(0, 64, 255, 0.7) 80%,    /* Deep Blue */
-			rgba(64, 0, 255, 0.7) 85%,    /* Purple Blue */
-			rgba(128, 0, 255, 0.7) 90%,   /* Purple */
-			rgba(204, 0, 255, 0.7) 95%,   /* Magenta Purple */
-			rgba(255, 0, 128, 0.7) 100%); /* Back to Hot Pink */
+			rgba(0, 255, 255, 0.8) 0%,    /* Pure Cyan */
+			rgba(0, 229, 255, 0.8) 12.5%, /* Light Cyan */
+			rgba(0, 204, 255, 0.8) 25%,   /* Sky Cyan */
+			rgba(0, 178, 255, 0.8) 37.5%, /* Blue Cyan */
+			rgba(0, 153, 255, 0.8) 50%,   /* Deep Cyan */
+			rgba(0, 178, 255, 0.8) 62.5%, /* Blue Cyan */
+			rgba(0, 204, 255, 0.8) 75%,   /* Sky Cyan */
+			rgba(0, 229, 255, 0.8) 87.5%, /* Light Cyan */
+			rgba(0, 255, 255, 0.8) 100%); /* Back to Pure Cyan */
 		z-index: -2;
 		animation: smooth-rotate 8s linear infinite;
 
@@ -537,21 +525,21 @@
 	@keyframes subtle-pulse {
 		0% { 
 			text-shadow: 
-				0 0 6px #ff444430,
-				0 0 12px #ff444420,
-				0 0 18px #ff444415;
+				0 0 6px #00ffff30,
+				0 0 12px #00ffff20,
+				0 0 18px #00ffff15;
 		}
 		50% { 
 			text-shadow: 
-				0 0 8px #ff444440,
-				0 0 16px #ff444430,
-				0 0 24px #ff444420;
+				0 0 8px #00ffff40,
+				0 0 16px #00ffff30,
+				0 0 24px #00ffff20;
 		}
 		100% { 
 			text-shadow: 
-				0 0 6px #ff444430,
-				0 0 12px #ff444420,
-				0 0 18px #ff444415;
+				0 0 6px #00ffff30,
+				0 0 12px #00ffff20,
+				0 0 18px #00ffff15;
   }
   }
 

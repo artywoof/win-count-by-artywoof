@@ -23,10 +23,10 @@
 		"dev:all": "bun dev",
 		"test:overlay": "start-server-and-test dev:all http://localhost:5173 bunx playwright test",
 		"tauri": "tauri",
-	"release": "bun run release:patch",
-	"release:patch": "bun version patch && git push && git push --tags",
-	"release:minor": "bun version minor && git push && git push --tags",
-	"release:major": "bun version major && git push && git push --tags"
+		"release": "bun run release:patch",
+		"release:patch": "bun version patch && git push && git push --tags",
+		"release:minor": "bun version minor && git push && git push --tags",
+		"release:major": "bun version major && git push && git push --tags"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.53.1",
@@ -53,8 +53,11 @@
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.13.2",
-		"@tauri-apps/api": "^2.6.0",
+		"@stripe/stripe-js": "^2.4.0",
+		"@tauri-apps/api": "^1.5.0",
 		"@tauri-apps/cli": "^2.6.2",
+		"cors": "^2.8.5",
+		"express": "^5.1.0",
 		"tailwindcss-textshadow": "^2.1.3"
 	}
 }

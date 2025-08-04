@@ -4,10 +4,15 @@
   import { browser } from '$app/environment';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { invoke } from '@tauri-apps/api/core';
-  // License system removed
-  import { updateManager } from '$lib/updateManager';
   import LicenseModal from '$lib/components/LicenseModal.svelte';
+
   import licenseManager from '$lib/licenseManager';
+  import { updateManager } from '$lib/updateManager';
+
+  // License checking state
+  let isLicenseValid = false;
+  let showLicenseModal = false;
+  let isCheckingLicense = true;
 
   // State stores - these will be updated by Tauri events
   const win = writable(0);
@@ -391,214 +396,113 @@
   }
   
   // License state
-  let isLicenseValid = false;
-  let showLicenseModal = false;
-  let isCheckingLicense = true;
-  
-  // Purchase Modal State
-  let showPurchaseModal = false;
-  let showQRCode = false;
-  let customerEmail = '';
-  let qrCodeData = '';
-  let countdownMinutes = 15;
-  let countdownSeconds = 0;
-  let paymentRef = '';
-  let pendingLicenseKey = '';
-  let paymentTimer: number | null = null;
-  let paymentCheckInterval: number | null = null;
-  
-  // App ready state
-  let isAppReady = false; // ควบคุมการแสดงแอพหลัก - ต้องตรวจสอบ License ก่อน
+  let licenseStatusMessage = '';
+  let licenseKeyInput = '';
+  let licenseError = '';
+  let licenseSuccess = '';
+  let isAppReady = false; // ควบคุมการแสดงแอพหลัก
   
   async function checkLicenseStatus() {
     try {
-      console.log('🔑 ตรวจสอบ License...');
+      // เช็คว่ามี license หรือไม่
+      const license = await invoke('check_license_command');
       
-      // ดึง License Key จาก localStorage
-      const savedLicenseKey = localStorage.getItem('win_count_license_key');
-      
-      if (!savedLicenseKey) {
-        console.log('❌ ไม่พบ License Key - แสดง License Modal');
-        isLicenseValid = false;
-        isAppReady = true; // ให้แสดงแอพได้ แต่ยังไม่ valid
-        showLicenseModal = true;
-        return;
-      }
-      
-      // ตรวจสอบ License ผ่าน Backend
-      const isValid = await invoke('validate_license_key', { license_key: savedLicenseKey });
+      // ตรวจสอบ license กับ server
+      const isValid = await invoke('verify_license_command');
       
       if (isValid) {
         isLicenseValid = true;
         isAppReady = true;
-        console.log('✅ License ถูกต้อง');
+        console.log('🔑 License is valid');
       } else {
-        console.log('❌ License ไม่ถูกต้อง - แสดง License Modal');
-        isLicenseValid = false;
-        isAppReady = true; // ให้แสดงแอพได้ แต่ยังไม่ valid
         showLicenseModal = true;
+        console.log('🔑 License not valid - showing modal');
       }
     } catch (error) {
-      console.error('❌ License check failed:', error);
-      // ในกรณีที่เกิดข้อผิดพลาด ให้แสดง License Modal
-      isLicenseValid = false;
-      isAppReady = true;
+      console.log('No valid license found');
       showLicenseModal = true;
     } finally {
       isCheckingLicense = false;
     }
   }
-
+  
   function onLicenseValid() {
     isLicenseValid = true;
     showLicenseModal = false;
     isAppReady = true;
-    console.log('✅ License validated successfully - เข้าใช้งานแอพได้แล้ว');
+  }
+  
+  function openLicenseModal() {
+    console.log('🔑 openLicenseModal called, setting showLicenseModal = true');
+    showLicenseModal = true;
+  }
+  
+  function closeLicenseModal() {
+    // อนุญาตให้ปิด Modal ได้เสมอ และให้แอพทำงานได้
+    showLicenseModal = false;
+    isAppReady = true; // อนุญาตให้แสดงแอพหลัก
+    
+    // Reset form
+    licenseKeyInput = '';
+    licenseError = '';
+    licenseSuccess = '';
   }
 
-
-
-  // บันทึก License Key เมื่อจ่ายเงินสำเร็จ
-  async function saveLicenseKey(licenseKey: string) {
-    try {
-      // บันทึกใน Backend
-      await invoke('save_license_key', { key: licenseKey });
-      
-      // บันทึกใน localStorage
-      localStorage.setItem('win_count_license_key', licenseKey);
-      
-      console.log('💾 License key saved successfully');
-    } catch (error) {
-      console.error('❌ Failed to save license key:', error);
+  // ฟังก์ชันจัดการ License Key formatting
+  function formatLicenseKey(input: string): string {
+    // ลบอักขระที่ไม่ใช่ตัวอักษรและตัวเลข
+    let value = input.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    // จำกัดความยาวไม่เกิน 16 ตัวอักษร
+    if (value.length > 16) value = value.substring(0, 16);
+    
+    // เพิ่ม - ทุก 4 ตัวอักษร
+    let formatted = '';
+    for (let i = 0; i < value.length; i++) {
+      if (i > 0 && i % 4 === 0) formatted += '-';
+      formatted += value[i];
     }
+    
+    return formatted;
   }
 
-  // Purchase functions
-  function openPurchaseModal() {
-    showPurchaseModal = true;
-    showQRCode = false;
-    customerEmail = '';
-    qrCodeData = '';
-    countdownMinutes = 15;
-    countdownSeconds = 0;
-  }
+  async function validateLicenseKey() {
+    // Clear previous messages
+    licenseError = '';
+    licenseSuccess = '';
 
-  function closePurchaseModal() {
-    showPurchaseModal = false;
-    showQRCode = false;
-    if (paymentTimer !== null) clearInterval(paymentTimer);
-    if (paymentCheckInterval !== null) clearInterval(paymentCheckInterval);
-  }
-
-  async function startPurchase() {
-    if (!customerEmail || !customerEmail.includes('@')) {
-      alert('กรุณากรอกอีเมลที่ถูกต้อง');
+    // Check if input is empty
+    if (!licenseKeyInput.trim()) {
+      licenseError = 'กรุณากรอก License Key';
       return;
     }
 
     try {
-      console.log('🛒 Starting purchase process...');
+      // ตรวจสอบ License Key กับ backend
+      const isValid = await invoke('validate_license_key', { key: licenseKeyInput.trim() });
       
-      // ดึง Machine ID
-      const machineId = await invoke('get_machine_id');
-      
-      // สร้าง Purchase Request
-      const response = await fetch('https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api/create-purchase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          machine_id: machineId,
-          customer_email: customerEmail
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        // เก็บข้อมูลสำคัญ
-        paymentRef = result.payment_ref;
-        pendingLicenseKey = result.license_key;
-        qrCodeData = result.qr_code_data;
+      if (isValid === true) {
+        licenseSuccess = 'License Key ถูกต้อง!';
+        isLicenseValid = true;
+        licenseStatusMessage = 'License ถูกต้อง - Win Count by ArtYWoof';
+        isAppReady = true; // อนุญาตให้แสดงแอพหลัก
         
-        // แสดง QR Code
-        showQRCode = true;
-        
-        // เริ่มนับถอยหลัง 15 นาที
-        startCountdown();
-        
-        // เริ่มเช็คการจ่ายเงิน
-        startPaymentMonitoring();
-        
-        console.log('✅ Purchase request created:', result);
+        // Auto close modal after 2 seconds
+        setTimeout(() => {
+          closeLicenseModal();
+        }, 2000);
       } else {
-        alert('เกิดข้อผิดพลาด: ' + result.message);
+        licenseError = 'License Key ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+        isLicenseValid = false;
       }
-    } catch (error) {
-      console.error('❌ Purchase failed:', error);
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    } catch (error: any) {
+      console.error('❌ License validation error:', error);
+      if (error.toString().includes('already activated on another machine')) {
+        licenseError = 'License Key นี้ถูกใช้งานบนเครื่องอื่นแล้ว';
+      } else {
+        licenseError = 'เกิดข้อผิดพลาดในการตรวจสอบ License Key';
+      }
+      isLicenseValid = false;
     }
-  }
-
-  function startCountdown() {
-    paymentTimer = setInterval(() => {
-      if (countdownSeconds > 0) {
-        countdownSeconds--;
-      } else if (countdownMinutes > 0) {
-        countdownMinutes--;
-        countdownSeconds = 59;
-      } else {
-        // หมดเวลา
-        if (paymentTimer !== null) clearInterval(paymentTimer);
-        if (paymentCheckInterval !== null) clearInterval(paymentCheckInterval);
-        alert('หมดเวลาการชำระเงิน กรุณาลองใหม่');
-        closePurchaseModal();
-      }
-    }, 1000);
-  }
-
-  async function startPaymentMonitoring() {
-    const checkPayment = async () => {
-      try {
-        const response = await fetch('https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api/check-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_ref: paymentRef })
-        });
-
-        const result = await response.json();
-        
-        if (result.status === 'PAID') {
-          // จ่ายเงินสำเร็จ!
-          if (paymentTimer !== null) clearInterval(paymentTimer);
-          if (paymentCheckInterval !== null) clearInterval(paymentCheckInterval);
-          
-          // บันทึก License Key
-          await saveLicenseKey(pendingLicenseKey);
-          
-          // แสดงข้อความสำเร็จ
-          alert('🎉 ชำระเงินสำเร็จ! สามารถใช้งานได้แล้ว');
-          
-          // ปิด Modal และรีเฟรช
-          closePurchaseModal();
-          location.reload();
-          
-        } else if (result.status === 'EXPIRED') {
-          if (paymentTimer !== null) clearInterval(paymentTimer);
-          if (paymentCheckInterval !== null) clearInterval(paymentCheckInterval);
-          alert('QR Code หมดอายุ กรุณาลองใหม่');
-          closePurchaseModal();
-        }
-        // ถ้า PENDING ให้เช็คต่อไป
-      } catch (error) {
-        console.error('❌ Payment check failed:', error);
-      }
-    };
-    
-    // เช็คทุก 10 วินาที
-    paymentCheckInterval = setInterval(checkPayment, 10000);
-    
-    // เช็คครั้งแรกทันที
-    checkPayment();
   }
 
   function openAddPreset() {
@@ -1520,13 +1424,11 @@
       // Save the current preset to backend state
       try {
         await invoke('set_win_state', {
-          new_state: {
-            win: presetData.win,
-            goal: presetData.goal,
-            show_goal: presetData.show_goal !== false,
-            show_crown: presetData.show_crown !== false,
-            current_preset: presetName
-          }
+          win: presetData.win,
+          goal: presetData.goal,
+          show_goal: presetData.show_goal !== false,
+          show_crown: presetData.show_crown !== false,
+          current_preset: presetName
         });
         console.log(`✅ Saved current preset to backend: ${presetName}`);
       } catch (err) {
@@ -1694,7 +1596,8 @@
     // Initialize Update Manager
     updateManager.checkForUpdates();
     
-    // License system removed
+    // Check license status
+    await checkLicenseStatus();
     
     // Anti-tampering check
     await checkAppIntegrity();
@@ -1958,8 +1861,12 @@
     <div class="spinner"></div>
     <h2>🔍 ตรวจสอบ License...</h2>
   </div>
+{:else if !isLicenseValid && showLicenseModal}
+  <LicenseModal 
+    isOpen={showLicenseModal} 
+    onLicenseValid={onLicenseValid}
+  />
 {:else}
-  <!-- แสดงเนื้อหาแอพหลักเสมอ -->
   <div class="control-app">
     <!-- Window Controls -->
     <div class="window-controls-left">
@@ -2120,20 +2027,6 @@
     </button>
     
   </div>
-  {/if}
-  </div>
-  
-  <!-- แสดง LicenseModal ซ้อนทับเมื่อยังไม่ได้ซื้อ License -->
-  {#if !isLicenseValid}
-    <LicenseModal 
-      isOpen={true} 
-      onLicenseValid={onLicenseValid}
-    />
-
-  {/if}
-{/if}
-
-
 
   <!-- Settings Modal -->
   {#if showSettingsModal}
@@ -2366,7 +2259,7 @@
   <!-- Modal ยืนยันลบเสียง -->
   {#if showDeleteSoundModal}
     <div class="modal-backdrop" on:click={() => showDeleteSoundModal = false} on:keydown={(e) => e.key === 'Escape' && (showDeleteSoundModal = false)} role="button" tabindex="0">
-      <div class="modal delete-sound-modal" on:click|stopPropagation role="dialog" tabindex="0">
+      <div class="modal delete-sound-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
           <h3>ยืนยันการลบเสียง</h3>
         </div>
@@ -2403,7 +2296,7 @@
   <!-- Modal ยืนยันรีเซ็ตเสียง -->
   {#if showResetSoundModal}
     <div class="modal-backdrop" on:click={() => showResetSoundModal = false} on:keydown={(e) => e.key === 'Escape' && (showResetSoundModal = false)} role="button" tabindex="0">
-      <div class="modal reset-sound-modal" on:click|stopPropagation role="dialog" tabindex="0">
+      <div class="modal reset-sound-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
           <h3>ยืนยันการรีเซ็ตเสียง</h3>
         </div>
@@ -2440,9 +2333,9 @@
   <!-- Modal ยืนยันรีเซ็ตคืนค่า -->
   {#if showResetConfirmModal}
     <div class="modal-backdrop" on:click={() => showResetConfirmModal = false} on:keydown={(e) => e.key === 'Escape' && (showResetConfirmModal = false)} role="button" tabindex="0">
-      <div class="modal reset-hotkey-modal" on:click|stopPropagation role="dialog" tabindex="0">
+      <div class="modal reset-hotkey-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
-          <h3>ยืนยันการรีเซ็ตคืนค่าคีย์ลัดทั้งหมด?</h3>
+          <h3>ยืนยันการรีเซ็ตคืนค่า</h3>
         </div>
         <div class="modal-body">
           <div class="confirm-message">
@@ -2469,7 +2362,7 @@
   <!-- Modal PRESET -->
   {#if showPresetModal}
     <div class="modal-backdrop" on:click={() => showPresetModal = false} on:keydown={(e) => e.key === 'Escape' && (showPresetModal = false)} role="button" tabindex="0">
-      <div class="modal settings-modal" on:click|stopPropagation role="dialog" tabindex="0">
+      <div class="modal settings-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
           <h3>โปรไฟล์เกมส์</h3>
           <button class="modal-close" on:click={() => showPresetModal = false}>×</button>
@@ -2477,7 +2370,7 @@
         <div class="modal-body">
           <div class="preset-list">
             {#each $sortedPresets as preset}
-              <div class="preset-item-btn {preset === $currentPreset ? 'active' : ''}" on:click={() => selectPreset(preset)} on:keydown={(e) => e.key === 'Enter' && selectPreset(preset)} role="button" tabindex="0">
+              <div class="preset-item-btn {preset === $currentPreset ? 'active' : ''}" on:click={() => selectPreset(preset)}>
                 {#if editingPreset === preset}
                   <input class="rename-input" bind:value={renameValue} on:keydown={(e) => {
                     e.stopPropagation();
@@ -2525,7 +2418,7 @@
   <!-- Copy Success Modal -->
   {#if showCopyModal}
     <div class="modal-backdrop" role="button" tabindex="0">
-      <div class="modal copy-modal" on:click|stopPropagation role="dialog" tabindex="0">
+      <div class="modal copy-modal" on:click|stopPropagation role="dialog">
         <div class="modal-body" style="max-height: calc(85vh - 120px); overflow-y: auto; padding-bottom: 20px;">
           <div class="copy-success">
             <h3>คัดลอกลิงก์แล้ว ✅</h3>
@@ -2566,7 +2459,7 @@
   <!-- Delete Confirmation Modal -->
   {#if showDeleteModal}
     <div class="modal-backdrop" on:click={() => showDeleteModal = false} on:keydown={(e) => e.key === 'Escape' && (showDeleteModal = false)} role="button" tabindex="0">
-      <div class="modal reset-hotkey-modal" on:click|stopPropagation role="dialog" tabindex="0">
+      <div class="modal reset-hotkey-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
           <h3>ยืนยันการลบ Preset</h3>
         </div>
@@ -2586,7 +2479,7 @@
   <!-- Donate Modal -->
   {#if showDonateModal}
     <div class="modal-backdrop" on:click={closeDonateModal} on:keydown={(e) => e.key === 'Escape' && closeDonateModal()} role="button" tabindex="0">
-      <div class="modal donate-modal" on:click|stopPropagation role="dialog" tabindex="0">
+      <div class="modal donate-modal" on:click|stopPropagation role="dialog">
         <div class="modal-header">
           <h3>💰 โดเนท</h3>
           <button class="modal-close" on:click={closeDonateModal}>×</button>
@@ -2632,8 +2525,8 @@
             </div>
             
             <div class="donate-operation-group">
-              <label for="operation-buttons">บวกหรือลบ?:</label>
-              <div class="operation-buttons" id="operation-buttons" role="group" aria-labelledby="operation-label">
+              <label>บวกหรือลบ?:</label>
+              <div class="operation-buttons">
                 <button 
                   class="operation-btn {donateOperation === 'add' ? 'active' : ''} {operationError ? 'error' : ''}" 
                   on:click={() => {
@@ -2670,7 +2563,10 @@
       </div>
     </div>
   {/if}
-  
+  {/if}
+
+          </div>
+
 <style>
   .control-app {
     width: 496px;
@@ -3627,7 +3523,9 @@
     line-height: 1.5;
   }
 
-
+  .update-modal-content strong {
+    color: #00e5ff;
+  }
 
   .update-body {
     background: rgba(0, 229, 255, 0.1);
@@ -3715,7 +3613,21 @@
     text-align: center;
   }
 
+  .restart-modal-content h3 {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #00e5ff;
+    margin: 0 0 20px 0;
+  }
 
+  .restart-modal-content p {
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 16px;
+    color: #ffffff;
+    margin: 8px 0;
+    line-height: 1.5;
+  }
 
   /* Toast Notifications */
   .toast {
@@ -4612,7 +4524,11 @@
     text-align: center;
   }
 
-
+  .update-notice p {
+    margin: 0 0 10px 0;
+    color: #ff6b6b;
+    font-weight: 600;
+  }
 
   .update-btn {
     background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
@@ -4645,7 +4561,13 @@
     margin: 20px 0;
   }
 
-
+  .license-input-container label {
+    display: block;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+  }
 
   .license-key-input {
     width: 100%;
@@ -5195,575 +5117,50 @@
     100% { transform: rotate(360deg); }
   }
 
-  .license-check-screen {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%);
-  }
-
-  .license-check-content {
-    text-align: center;
-    padding: 40px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 20px;
-    border: 2px solid #00ffff;
-    box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
-  }
-
-  .license-check-content h2 {
-    color: #00ffff;
-    font-size: 2rem;
-    margin-bottom: 20px;
-  }
-
-  .license-check-content p {
-    color: #ffffff;
-    font-size: 1.2rem;
-    margin-bottom: 30px;
-  }
-
-  .buy-license-btn {
-    background: linear-gradient(45deg, #00ffff, #0080ff);
-    border: none;
-    color: #000000;
-    padding: 15px 30px;
-    font-size: 1.2rem;
-    font-weight: bold;
-    border-radius: 25px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-  }
-
-  .buy-license-btn:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
-  }
-
-  .test-license-btn {
-    background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
-    border: none;
-    color: #ffffff;
-    padding: 12px 20px;
-    font-size: 1rem;
-    font-weight: bold;
-    border-radius: 15px;
-    cursor: pointer;
-    margin-top: 15px;
-    transition: all 0.3s ease;
-  }
-
-  .test-license-btn:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(255, 107, 107, 0.5);
-  }
-
-  /* Purchase Modal Styles */
-  .purchase-modal {
-    max-width: 480px !important;
-    min-width: 480px !important;
-    width: 480px !important;
-    max-height: calc(90vh) !important;
-  }
-
-  .purchase-info {
-    text-align: center;
-    padding: 20px 0;
-  }
-
-  .app-preview {
-    margin-bottom: 30px;
-  }
-
-  .app-icon-large {
-    width: 80px;
-    height: 80px;
-    margin-bottom: 16px;
-    filter: drop-shadow(0 0 12px #00e5ff40);
-  }
-
-  .app-preview h4 {
-    font-size: 28px;
-    font-weight: 700;
-    color: #00e5ff;
-    margin: 12px 0 8px 0;
-  }
-
-  .tagline {
-    font-size: 16px;
-    color: rgba(255, 255, 255, 0.8);
-    margin: 0 0 20px 0;
-    line-height: 1.4;
-  }
-
-  .price-box {
-    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 100%);
-    border-radius: 16px;
-    padding: 20px;
-    margin: 20px 0 30px 0;
-    color: #000;
-  }
-
-  .price {
-    font-size: 42px;
-    font-weight: 700;
-    font-family: 'MiSansThai-Bold', sans-serif;
-  }
-
-  .period {
-    font-size: 22px;
-    font-weight: 600;
-    opacity: 0.8;
-    margin-left: 8px;
-  }
-
-  .features-list {
-    text-align: left;
-    margin: 20px 0 30px 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .features-list li {
-    font-size: 18px;
-    color: #ffffff;
-    margin: 12px 0;
-    padding-left: 0;
-    line-height: 1.4;
-  }
-
-  .email-input-group {
-    margin: 20px 0 30px 0;
-    text-align: left;
-  }
-
-  .email-input-group label {
-    display: block;
-    font-size: 16px;
-    font-weight: 600;
-    color: #00e5ff;
-    margin-bottom: 8px;
-  }
-
-  .customer-email-input {
-    width: 100%;
-    padding: 16px;
-    font-size: 16px;
-    border: 2px solid rgba(0, 229, 255, 0.3);
-    border-radius: 12px;
-    background: rgba(0, 0, 0, 0.4);
-    color: #fff;
-    transition: all 0.3s ease;
-  }
-
-  .customer-email-input:focus {
-    outline: none;
-    border-color: #00e5ff;
-    background: rgba(0, 229, 255, 0.1);
-  }
-
-  .customer-email-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .purchase-btn {
-    width: 100%;
-    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 100%);
-    color: #000;
-    border: none;
-    border-radius: 16px;
-    padding: 20px;
-    font-size: 20px;
-    font-weight: 700;
-    font-family: 'MiSansThai-Bold', sans-serif;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin-bottom: 20px;
-  }
-
-  .purchase-btn:hover {
-    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4);
-  }
-
-  .terms-text {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.6);
-    margin: 0;
-    line-height: 1.4;
-  }
-
-  .terms-link {
-    color: #00e5ff;
-    text-decoration: none;
-  }
-
-  .terms-link:hover {
-    text-decoration: underline;
-  }
-
-  /* QR Payment Styles */
-  .qr-payment {
-    text-align: center;
-    padding: 20px 0;
-  }
-
-  .qr-payment h4 {
-    font-size: 24px;
-    font-weight: 700;
-    color: #00e5ff;
-    margin: 0 0 30px 0;
-  }
-
-  .qr-container {
-    margin: 30px 0;
-  }
-
-  .qr-code-box {
-    width: 200px;
-    height: 200px;
-    margin: 0 auto 20px auto;
-    border: 3px solid #00e5ff;
-    border-radius: 16px;
-    background: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .qr-placeholder {
-    text-align: center;
-    color: #000;
-    font-weight: 600;
-  }
-
-  .qr-placeholder p {
-    margin: 8px 0;
-    font-size: 18px;
-  }
-
-  .qr-placeholder small {
-    font-size: 12px;
-    opacity: 0.7;
-    word-break: break-all;
-  }
-
-  .qr-loading {
-    color: #666;
-  }
-
-  .payment-details {
-    margin: 20px 0 30px 0;
-  }
-
-  .payment-details p {
-    font-size: 18px;
-    color: #ffffff;
-    margin: 12px 0;
-  }
-
-  .payment-details strong {
-    color: #00e5ff;
-  }
-
-  .payment-status {
-    background: rgba(0, 229, 255, 0.1);
-    border: 1px solid rgba(0, 229, 255, 0.3);
-    border-radius: 12px;
-    padding: 20px;
-    margin: 20px 0;
-  }
-
-  .status-indicator {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-
-  .spinner-small {
-    width: 20px;
-    height: 20px;
-    border: 2px solid rgba(0, 229, 255, 0.3);
-    border-top: 2px solid #00e5ff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  .payment-instructions {
-    text-align: left;
-  }
-
-  .payment-instructions h5 {
-    font-size: 16px;
-    font-weight: 600;
-    color: #00e5ff;
-    margin: 0 0 12px 0;
-  }
-
-  .payment-instructions ol {
-    margin: 0;
-    padding-left: 20px;
-  }
-
-  .payment-instructions li {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.8);
-    margin: 8px 0;
-    line-height: 1.4;
-  }
-
-  /* License Check Screen Styles */
-  .loading-screen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, #040319 0%, #0a0a2a 100%);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 9998;
-    color: #ffffff;
-  }
-
-  .loading-screen .spinner {
-    width: 60px;
-    height: 60px;
-    border: 4px solid rgba(0, 229, 255, 0.3);
-    border-top: 4px solid #00e5ff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 20px;
-  }
-
-  .loading-screen h2 {
-    font-size: 24px;
-    font-weight: 600;
-    color: #00e5ff;
-    margin: 0;
-  }
-
-  .license-check-screen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, #040319 0%, #0a0a2a 100%);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 9998;
-  }
-
-  .license-check-content {
-    background: linear-gradient(135deg, #1a0f3a 0%, #2a1f4a 100%);
-    border: 2px solid #00e5ff;
-    border-radius: 20px;
-    padding: 40px;
-    text-align: center;
-    max-width: 500px;
-    width: 90%;
-    box-shadow: 0 0 50px rgba(0, 229, 255, 0.3);
-  }
-
-  .license-check-content h2 {
-    font-size: 28px;
-    font-weight: 700;
-    color: #00e5ff;
-    margin: 0 0 20px 0;
-  }
-
-  .license-check-content p {
-    font-size: 16px;
-    color: #cccccc;
-    margin: 0 0 30px 0;
-    line-height: 1.5;
-  }
-
-  .buy-license-btn {
-    background: linear-gradient(45deg, #00e5ff, #0080ff);
-    border: none;
-    color: #000000;
-    padding: 15px 30px;
-    font-size: 18px;
-    font-weight: 700;
-    border-radius: 25px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin: 0 10px 15px 0;
-    display: inline-block;
-  }
-
-  .buy-license-btn:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
-  }
-
-  .test-license-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: 2px solid #00e5ff;
-    color: #00e5ff;
-    padding: 12px 25px;
-    font-size: 16px;
-    font-weight: 600;
-    border-radius: 20px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin: 0 10px 0 0;
-    display: inline-block;
-  }
-
-  .test-license-btn:hover {
-    background: rgba(0, 229, 255, 0.1);
-    transform: scale(1.05);
-  }
-
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-
-  /* Development Test Button */
-  .dev-test-overlay {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9997;
-  }
-
-  .dev-test-btn {
-    background: rgba(255, 193, 7, 0.9);
-    border: 2px solid #ffc107;
-    color: #000000;
-    padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    border-radius: 15px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 10px rgba(255, 193, 7, 0.3);
-  }
-
-  .dev-test-btn:hover {
-    background: rgba(255, 193, 7, 1);
-    transform: scale(1.05);
-    box-shadow: 0 4px 15px rgba(255, 193, 7, 0.5);
-  }
-
 </style>
 
-<!-- Purchase Modal -->
-{#if showPurchaseModal}
-  <div class="modal-backdrop" on:click={closePurchaseModal}>
-          <div class="modal purchase-modal" on:click|stopPropagation role="dialog" tabindex="0">
+<!-- License Modal -->
+{#if showLicenseModal}
+  <div class="modal-backdrop">
+    <div class="modal license-test-modal" on:click|stopPropagation>
       <div class="modal-header">
-        <h3>🚀 เริ่มใช้งาน Win Count</h3>
-        {#if showQRCode}
-          <button class="modal-close" on:click={closePurchaseModal}>×</button>
-        {/if}
+        <h3>🔑 รหัสยืนยัน</h3>
       </div>
       <div class="modal-body">
-        
-        {#if !showQRCode}
-          <!-- Step 1: Purchase Info -->
-          <div class="purchase-info">
-            <div class="app-preview">
-              <img src="/assets/ui/app_crown.png" alt="Win Count" class="app-icon-large" />
-              <h4>💎 Win Count Pro</h4>
-              <p class="tagline">เครื่องมือนับวินสำหรับสตรีมเมอร์ระดับโปร</p>
+        <div class="license-input-container">
+          <label for="license-key-input">กรุณากรอก License Key:</label>
+          <input 
+            id="license-key-input"
+            type="text" 
+            placeholder="XXXX-XXXX-XXXX-XXXX" 
+            class="license-key-input"
+            bind:value={licenseKeyInput}
+            on:keydown={(e) => e.key === 'Enter' && validateLicenseKey()}
+            on:input={(e) => {
+              // เพิ่ม - อัตโนมัติตามรูปแบบ XXXX-XXXX-XXXX-XXXX
+              const target = e.target as HTMLInputElement;
+              licenseKeyInput = formatLicenseKey(target.value);
+            }}
+          />
+          {#if licenseError}
+            <div class="license-error">
+              ❌ {licenseError}
             </div>
-            
-            <div class="price-box">
-                              <span class="price">149 บาท</span>
-              <span class="period">/เดือน</span>
+          {/if}
+          {#if licenseSuccess}
+            <div class="license-success">
+              ✅ License Key ถูกต้อง!
             </div>
-            
-            <ul class="features-list">
-              <li>✅ ใช้งานได้ไม่จำกัด</li>
-              <li>✅ Hotkey ครบทุกฟีเจอร์</li>
-              <li>✅ Overlay สำหรับ TikTok Live</li>
-              <li>✅ อัพเดทฟรีตลอดชีพ</li>
-              <li>✅ ซัพพอร์ตจากผู้พัฒนา</li>
-            </ul>
-            
-            <div class="email-input-group">
-              <label for="customer-email">อีเมลของคุณ:</label>
-              <input 
-                id="customer-email"
-                type="email" 
-                placeholder="example@email.com" 
-                bind:value={customerEmail}
-                class="customer-email-input"
-              />
-            </div>
-            
-            <button class="purchase-btn" on:click={startPurchase}>
-                              💳 ซื้อด้วย PromptPay - 149 บาท
-            </button>
-            
-            <p class="terms-text">
-              การซื้อหมายถึงคุณยอมรับ<br>
-              <a href="javascript:void(0)" class="terms-link">เงื่อนไขการใช้งาน</a>
-            </p>
-          </div>
-          
-        {:else}
-          <!-- Step 2: QR Code Payment -->
-          <div class="qr-payment">
-            <h4>📱 สแกนเพื่อจ่ายเงิน</h4>
-            
-            <div class="qr-container">
-              <div class="qr-code-box">
-                {#if qrCodeData}
-                  <!-- QR Code จะแสดงตรงนี้ - ตอนนี้ใช้ placeholder -->
-                  <div class="qr-placeholder">
-                    <p>QR Code</p>
-                    <p>PromptPay</p>
-                    <small>{qrCodeData}</small>
-                  </div>
-                {:else}
-                  <div class="qr-loading">
-                    <div class="spinner"></div>
-                    <p>กำลังสร้าง QR Code...</p>
-                  </div>
-                {/if}
-              </div>
-            </div>
-            
-            <div class="payment-details">
-                              <p class="amount">💰 จำนวน: <strong>149 บาท</strong></p>
-              <p class="timer">⏰ เหลือเวลา: <strong>{countdownMinutes.toString().padStart(2, '0')}:{countdownSeconds.toString().padStart(2, '0')}</strong></p>
-            </div>
-            
-            <div class="payment-status">
-              <div class="status-indicator">
-                <div class="spinner-small"></div>
-                <p>รอการชำระเงิน...</p>
-              </div>
-              
-              <div class="payment-instructions">
-                <h5>วิธีการจ่ายเงิน:</h5>
-                <ol>
-                  <li>เปิดแอป Banking ในมือถือ</li>
-                  <li>เลือก "สแกน QR" หรือ "PromptPay"</li>
-                  <li>สแกน QR Code ด้านบน</li>
-                  <li>ยืนยันการจ่ายเงิน 149 บาท</li>
-                  <li>รอสักครู่ License จะเปิดใช้งานอัตโนมัติ</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        {/if}
-        
+          {/if}
+        </div>
+        <div class="modal-actions">
+          <button class="confirm-btn" on:click={validateLicenseKey}>
+            ยืนยัน
+          </button>
+          <button class="skip-btn" on:click={closeLicenseModal}>
+            ข้าม
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -5774,7 +5171,7 @@
 <!-- Result Modal -->
   {#if showResultModal}
     <div class="modal-backdrop" on:click={closeResultModal}>
-      <div class="modal result-modal" on:click|stopPropagation role="dialog" tabindex="0">
+      <div class="modal result-modal" on:click|stopPropagation>
         <div class="modal-header">
           <h3 style="text-align: center; width: 100%;">ผลลัพธ์</h3>
         </div>
