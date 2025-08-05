@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "env": {
+    "OMISE_PUBLIC_KEY": "pkey_test_64lscvwq1vrcw00i3fe",
+    "OMISE_SECRET_KEY": "skey_test_64lscvxfhjntnv34gv0",
+    "OMISE_WEBHOOK_SECRET": "whsec_test_64lscvwq1vrcw00i3fe"
+  }
+} 

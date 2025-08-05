@@ -97,6 +97,40 @@
   let updateInfo: any = null;
   let isCheckingUpdate = false;
   
+  // Payment Selection state
+  let selectedPaymentMethod = 'promptpay'; // default
+  let showPaymentMethods = false;
+  let customerPhone = '';
+  let isProcessingPayment = false;
+
+  // Payment method options
+  const paymentMethods = [
+    {
+      id: 'promptpay',
+      name: 'PromptPay',
+      icon: '📱',
+      description: 'สแกน QR Code ผ่านแอป Banking',
+      fees: 'ฟรี',
+      processing_time: 'ทันที'
+    },
+    {
+      id: 'truewallet',
+      name: 'True Wallet',
+      icon: '💳',
+      description: 'จ่ายผ่าน True Wallet App',
+      fees: 'ฟรี',
+      processing_time: 'ทันที'
+    },
+    {
+      id: 'card',
+      name: 'บัตรเครดิต/เดบิต',
+      icon: '💳',
+      description: 'Visa, Mastercard, JCB',
+      fees: '+3%',
+      processing_time: 'ทันที'
+    }
+  ];
+  
   // Upload message state
   let uploadMessage = '';
   
@@ -554,6 +588,17 @@
         closePurchaseModal();
       }
     }, 1000);
+  }
+
+  // Enhanced payment functions
+  function selectPaymentMethod(methodId: string) {
+    selectedPaymentMethod = methodId;
+    showPaymentMethods = false;
+  }
+
+  function validateEmail(email: string) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
   }
 
   async function startPaymentMonitoring() {
@@ -3955,7 +4000,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9999;
+    z-index: 10005;
     padding: 20px;
     border-radius: 24px;
     margin: 10px;

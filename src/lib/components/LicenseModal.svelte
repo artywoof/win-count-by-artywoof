@@ -37,6 +37,219 @@
   let inputSuccess = '';
   let isInputValid = false;
 
+  // Payment Selection state
+  let selectedPaymentMethod = 'promptpay'; // default to PromptPay (ฟรี)
+  let customerPhone = '';
+  let customerEmail = '';
+  let isProcessingPayment = false;
+  let omisePaymentData = null;
+  let showPaymentSelection = false; // หน้าต่างเลือกวิธีชำระเงิน
+  let showPaymentPage = false; // หน้าชำระเงินแต่ละวิธี
+  let currentPaymentStep = 'selection'; // 'selection' หรือ 'payment'
+
+  // Omise Payment Methods พร้อมข้อมูลที่ถูกต้อง
+  const omisePaymentMethods = [
+    {
+      id: 'promptpay',
+      name: 'PromptPay',
+      icon: '📱',
+      description: 'สแกน QR Code ผ่านแอป Banking ทุกธนาคาร',
+      fees: 'ฟรี (0%)',
+      processing_time: 'ทันที',
+      popular: true,
+      thai_only: true
+    },
+    {
+      id: 'truewallet',
+      name: 'True Wallet',
+      icon: '💙',
+      description: 'จ่ายผ่าน True Wallet App',
+      fees: '1.65%',
+      processing_time: 'ทันที',
+      popular: true,
+      thai_only: true
+    },
+    {
+      id: 'card',
+      name: 'บัตรเครดิต/เดบิต',
+      icon: '💳',
+      description: 'Visa, Mastercard, JCB ทุกธนาคาร',
+      fees: '2.65%',
+      processing_time: 'ทันที',
+      popular: false,
+      thai_only: false
+    }
+  ];
+
+  function selectPaymentMethod(methodId: string) {
+    selectedPaymentMethod = methodId;
+  }
+
+  function goToPaymentPage() {
+    if (!customerEmail || !validateEmail(customerEmail)) {
+      alert('⚠️ กรุณากรอกอีเมลให้ถูกต้อง');
+      return;
+    }
+    currentPaymentStep = 'payment';
+    showPaymentPage = true;
+  }
+
+  function goBackToSelection() {
+    currentPaymentStep = 'selection';
+    showPaymentPage = false;
+  }
+
+  function getSelectedMethod() {
+    return omisePaymentMethods.find(method => method.id === selectedPaymentMethod);
+  }
+
+  function calculateFinalAmount() {
+    const selectedMethod = getSelectedMethod();
+    if (!selectedMethod) return 149;
+    
+    if (selectedMethod.id === 'promptpay') return 149; // ฟรี
+    
+    const feeRate = {
+      'truewallet': 0.0165,
+      'rabbit_linepay': 0.023,
+      'card': 0.0265
+    }[selectedMethod.id] || 0;
+    
+    return Math.ceil(149 * (1 + feeRate));
+  }
+
+  // Enhanced startPurchase function สำหรับ Omise
+  async function startOmisePurchase() {
+    if (!customerEmail || !validateEmail(customerEmail)) {
+      alert('⚠️ กรุณากรอกอีเมลให้ถูกต้อง');
+      return;
+    }
+
+    isProcessingPayment = true;
+
+    try {
+      const machineId = await invoke('get_machine_id');
+      
+      console.log(`🔄 Starting Omise ${selectedPaymentMethod} payment...`);
+      
+      const response = await fetch('https://win-count-by-artywoof-5np9kh6ry-artywoofs-projects.vercel.app/api/create-omise-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          machine_id: machineId,
+          customer_email: customerEmail,
+          payment_method: selectedPaymentMethod
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Omise API error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        omisePaymentData = result;
+        showQRCode = true;
+        
+        // Handle different payment methods
+        if (selectedPaymentMethod === 'truewallet' && result.deep_link) {
+          // เปิด True Wallet App
+          window.open(result.deep_link, '_blank');
+        } else if (selectedPaymentMethod === 'card' && result.card_form_url) {
+          // เปิดหน้าฟอร์มบัตรเครดิต
+          window.open(result.card_form_url, '_blank');
+        } else if (selectedPaymentMethod === 'rabbit_linepay' && result.linepay_url) {
+          // เปิด LINE Pay
+          window.open(result.linepay_url, '_blank');
+        }
+        
+        startPaymentTimer();
+        startOmisePaymentStatusCheck();
+        
+      } else {
+        throw new Error(result.message || 'Omise payment creation failed');
+      }
+
+    } catch (error) {
+      console.error('❌ Omise payment error:', error);
+      alert(`เกิดข้อผิดพลาดในการชำระเงิน: ${error.message}`);
+    } finally {
+      isProcessingPayment = false;
+    }
+  }
+
+  // Omise Payment Status Check
+  async function startOmisePaymentStatusCheck() {
+    if (!omisePaymentData) return;
+
+    const checkStatus = async () => {
+      try {
+        const response = await fetch('https://win-count-by-artywoof-5np9kh6ry-artywoofs-projects.vercel.app/api/check-payment-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            charge_id: omisePaymentData.charge_id,
+            payment_reference: omisePaymentData.payment_reference
+          })
+        });
+
+        const status = await response.json();
+
+        if (status.success && status.payment_status === 'COMPLETED') {
+          console.log('🎉 Omise payment successful!');
+          
+          // บันทึก License Key
+          await invoke('save_license_key', { key: omisePaymentData.license_key });
+          
+          showQRCode = false;
+          showSuccessMessage('🎉 การชำระเงินสำเร็จ! ยินดีต้อนรับสู่ Win Count Pro');
+          
+          setTimeout(() => {
+            closeModal();
+            onLicenseValid();
+          }, 2000);
+          
+          return true; // Stop checking
+        } else if (status.payment_status === 'FAILED') {
+          console.log('❌ Omise payment failed');
+          alert('การชำระเงินล้มเหลว กรุณาลองใหม่อีกครั้ง');
+          showQRCode = false;
+          return true; // Stop checking
+        }
+
+        return false; // Continue checking
+      } catch (error) {
+        console.error('❌ Status check error:', error);
+        return false; // Continue checking
+      }
+    };
+
+    // Check every 3 seconds for 15 minutes
+    const maxChecks = 300; // 15 minutes * 60 seconds / 3 seconds
+    let checkCount = 0;
+
+    const statusInterval = setInterval(async () => {
+      checkCount++;
+      
+      const shouldStop = await checkStatus();
+      
+      if (shouldStop || checkCount >= maxChecks) {
+        clearInterval(statusInterval);
+        
+        if (checkCount >= maxChecks) {
+          console.log('⏰ Payment status check timeout');
+          alert('หมดเวลาการตรวจสอบการชำระเงิน กรุณาติดต่อฝ่ายสนับสนุน');
+        }
+      }
+    }, 3000);
+  }
+
+  function validateEmail(email: string) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  }
+
   onMount(() => {
     // ฟัง events จาก license manager
     window.addEventListener('license-activated', handleLicenseActivated);
@@ -335,38 +548,47 @@
             <div class="app-title">
               <h2>PRO</h2>
               <p class="tagline">เครื่องมือนับวินสำหรับสตรีมเมอร์ระดับโปร</p>
-            </div>
+        </div>
             
                          <div class="price-display">
-               <span class="price-amount">฿149</span>
-               <span class="price-period">/เดือน</span>
-             </div>
-            
-            <div class="content-with-vip">
-              <div class="features-list">
-                <h4>✨ ฟีเจอร์ที่ได้รับ:</h4>
-                <ul>
-                  <li>✅ กดปุ่มคีย์ลัด บวก/ลบ ทีละ 1 และ ทีละ 10</li>
-                  <li>✅ พิมพ์ บวก/ลบ/เป้าหมาย</li>
-                  <li>✅ สร้างโปรไฟล์บันทึกค่า วิน ของแต่ละเกม</li>
-                  <li>✅ ระบบ โดเนท บวก/ลบวิน</li>
-                  <li>✅ เลือกธีมได้</li>
-                  <li>✅ กล่องข้อความ ชาเลนจ์</li>
-                  <li>✅ เปิด/ปิด ไอคอน เป้าหมาย ขอบ กล่อง</li>
-                  <li>✅ ตั้งค่า คีย์ลัด</li>
-                  <li>✅ ตั้งค่า เสียง</li>
-                  <li>✅ อัพเดทอัตโนมัติ</li>
-                </ul>
+               <div>
+                 <span class="price-amount" style="color: #00ffff; font-size: 48px; font-weight: bold;">฿149</span>
+                 <span class="price-period" style="color: #00ffff; font-size: 1.6rem; font-weight: bold;">/เดือน</span>
+               </div>
+               <div style="margin-top: 8px;">
+                 <span class="price-amount" style="text-decoration: line-through; color: #ffffff; font-size: 1.8rem; opacity: 0.7;">฿249</span>
+                 <span class="price-period" style="color: #ffffff; font-size: 1.4rem;">/เดือน</span>
+               </div>
+      </div>
+
+            <!-- โปรโมชั่น Banner - Compact -->
+            <div class="promotion-banner-compact">
+              <div class="promo-content">
+                <span class="promo-title">โปรโมชั่นพิเศษ!</span>
+                <span class="promo-savings">ประหยัด ฿100</span>
+                <div class="timer-compact">⏰ หมดเขต: 6 ส.ค. 68</div>
               </div>
             </div>
+            
+            <div class="discord-info">
+              <div class="discord-text">
+                <p>ดูรายละเอียดฟีเจอร์ทั้งหมดได้ที่ Discord</p>
+              </div>
+              <div class="discord-icon">
+                <a href="https://discord.gg/eQT7DyxAG6" target="_blank" rel="noopener noreferrer">
+                  <img src="/assets/logo/Discord-Logo-Blurple.svg" alt="Discord" />
+                </a>
+              </div>
+            </div>
+            
+
            
             <div class="button-container">
               <button 
                 class="buy-button" 
-                on:click={createPayment}
-                disabled={isLoading}
+                on:click={() => showPaymentSelection = true}
               >
-                {isLoading ? 'กำลังสร้าง QR Code...' : 'เปย์'}
+                เปย์
               </button>
               
               <button 
@@ -410,7 +632,7 @@
                   <div class="qr-loading-overlay">
                     <div class="spinner-small"></div>
                     <p>กำลังโหลด QR Code...</p>
-                  </div>
+  </div>
                 {/if}
               {:else if qrImageError}
                 <div class="qr-error">
@@ -550,6 +772,210 @@
       </div>
     </div>
   {/if}
+
+  <!-- Payment Selection Modal -->
+  {#if showPaymentSelection}
+    <div class="payment-modal-backdrop" on:click={() => showPaymentSelection = false} on:keydown={(e) => e.key === 'Escape' && (showPaymentSelection = false)} role="dialog" tabindex="0">
+      <div class="payment-modal" on:click|stopPropagation role="dialog">
+        <div class="payment-modal-header">
+          <h3>💳 เลือกวิธีการชำระเงิน</h3>
+          <button class="close-btn" on:click={() => showPaymentSelection = false}>✕</button>
+        </div>
+        
+        <div class="payment-modal-body">
+          <div class="payment-methods-grid">
+            {#each omisePaymentMethods as method}
+              <button 
+                class="payment-method-btn {selectedPaymentMethod === method.id ? 'selected' : ''}"
+                on:click={() => selectPaymentMethod(method.id)}
+              >
+                <div class="method-header">
+                  <div class="method-icon">{method.icon}</div>
+                  <div class="method-name">{method.name}</div>
+                  {#if method.popular}
+                    <span class="popular-badge">ยอดนิยม</span>
+                  {/if}
+                </div>
+                <div class="method-details">
+                  <div class="method-desc">{method.description}</div>
+                  <div class="method-fees">ค่าธรรมเนียม: <strong>{method.fees}</strong></div>
+                </div>
+                {#if selectedPaymentMethod === method.id}
+                  <div class="selected-indicator">✓</div>
+                {/if}
+              </button>
+            {/each}
+          </div>
+          
+          <!-- ราคารวมตามวิธีชำระ -->
+          {#if selectedPaymentMethod !== 'promptpay'}
+            <div class="price-breakdown">
+              <div class="base-price">ราคาแอพ: ฿149</div>
+              <div class="fee-price">ค่าธรรมเนียม: ฿{calculateFinalAmount() - 149}</div>
+              <div class="total-price">รวมทั้งสิ้น: <strong>฿{calculateFinalAmount()}</strong></div>
+            </div>
+          {:else}
+            <div class="free-notice">
+              🎉 <strong>PromptPay ฟรีค่าธรรมเนียม!</strong> จ่ายเพียง ฿149
+            </div>
+          {/if}
+          
+          <div class="email-input-group">
+            <label for="customer-email">อีเมลของคุณ:</label>
+            <input 
+              id="customer-email"
+              type="email" 
+              placeholder="example@email.com" 
+              bind:value={customerEmail}
+              class="customer-email-input"
+              required
+            />
+          </div>
+          
+          <div class="payment-action-buttons">
+            <button 
+              class="next-payment-btn" 
+              on:click={goToPaymentPage}
+            >
+              ต่อไป →
+            </button>
+            
+            <button class="cancel-payment-btn" on:click={() => showPaymentSelection = false}>
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payment Page Modal -->
+    {#if showPaymentPage}
+      <div class="payment-page-backdrop" on:click={goBackToSelection} on:keydown={(e) => e.key === 'Escape' && goBackToSelection()} role="dialog" tabindex="0">
+        <div class="payment-page-modal" on:click|stopPropagation on:mousedown|stopPropagation on:mouseup|stopPropagation role="dialog">
+          <div class="payment-page-header">
+            <button class="back-btn" on:click={goBackToSelection}>← กลับ</button>
+            <h3>{getSelectedMethod()?.icon} {getSelectedMethod()?.name}</h3>
+            <div class="amount-display">฿{calculateFinalAmount()}</div>
+          </div>
+          
+          <div class="payment-page-body">
+            <!-- โปรโมชั่น Banner -->
+            <div class="promotion-banner">
+              <div class="promotion-header">
+                <div class="promotion-icon">🎉</div>
+                <div class="promotion-title">โปรโมชั่นพิเศษ!</div>
+              </div>
+              <div class="promotion-content">
+                <div class="price-comparison">
+                  <div class="original-price">
+                    <span class="price-label">ราคาปกติ:</span>
+                    <span class="price-value">฿199</span>
+                  </div>
+                  <div class="promotion-price">
+                    <span class="price-label">ราคาพิเศษ:</span>
+                    <span class="price-value">฿149</span>
+                  </div>
+                  <div class="discount-badge">ประหยัด ฿50</div>
+                </div>
+                <div class="promotion-timer">
+                  <div class="timer-icon">⏰</div>
+                  <div class="timer-text">หมดเขต: 6 สิงหาคม 2568</div>
+                </div>
+              </div>
+            </div>
+
+            {#if selectedPaymentMethod === 'promptpay'}
+              <!-- PromptPay Payment Page -->
+              <div class="promptpay-section">
+                <div class="payment-info">
+                  <h4>📱 PromptPay QR Code</h4>
+                  <p>สแกน QR Code ผ่านแอป Banking ทุกธนาคาร</p>
+                  <div class="qr-placeholder">
+                    <div class="qr-loading">
+                      <div class="spinner"></div>
+                      <p>กำลังสร้าง QR Code...</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="payment-instructions">
+                  <h4>📋 วิธีชำระเงิน:</h4>
+                  <ol>
+                    <li>เปิด Banking App (เช่น SCB, KBank, BBL)</li>
+                    <li>เลือก "สแกน QR Code" หรือ "PromptPay"</li>
+                    <li>สแกน QR Code ข้างบน</li>
+                    <li>ตรวจสอบข้อมูล: จำนวนเงิน ฿{calculateFinalAmount()}</li>
+                    <li>ยืนยันการชำระเงิน</li>
+                  </ol>
+                </div>
+              </div>
+            {:else if selectedPaymentMethod === 'truewallet'}
+              <!-- True Wallet Payment Page -->
+              <div class="truewallet-section">
+                <div class="payment-info">
+                  <h4>💙 True Wallet</h4>
+                  <p>จ่ายผ่าน True Wallet App</p>
+                  <div class="app-placeholder">
+                    <div class="app-icon">💙</div>
+                    <p>True Wallet App</p>
+                  </div>
+                </div>
+                
+                <div class="payment-instructions">
+                  <h4>📋 วิธีชำระเงิน:</h4>
+                  <ol>
+                    <li>เปิด True Wallet App</li>
+                    <li>เลือก "จ่ายเงิน" หรือ "Payment"</li>
+                    <li>สแกน QR Code หรือใส่หมายเลขอ้างอิง</li>
+                    <li>ตรวจสอบข้อมูล: จำนวนเงิน ฿{calculateFinalAmount()}</li>
+                    <li>ยืนยันการชำระเงิน</li>
+                  </ol>
+                </div>
+              </div>
+            {:else if selectedPaymentMethod === 'card'}
+              <!-- Credit/Debit Card Payment Page -->
+              <div class="card-section">
+                <div class="payment-info">
+                  <h4>💳 บัตรเครดิต/เดบิต</h4>
+                  <p>Visa, Mastercard, JCB ทุกธนาคาร</p>
+                  <div class="card-placeholder">
+                    <div class="card-icon">💳</div>
+                    <p>กรอกข้อมูลบัตร</p>
+                  </div>
+                </div>
+                
+                <div class="payment-instructions">
+                  <h4>📋 วิธีชำระเงิน:</h4>
+                  <ol>
+                    <li>กรอกหมายเลขบัตรเครดิต/เดบิต</li>
+                    <li>กรอกวันหมดอายุและ CVV</li>
+                    <li>กรอกชื่อผู้ถือบัตร</li>
+                    <li>ตรวจสอบข้อมูล: จำนวนเงิน ฿{calculateFinalAmount()}</li>
+                    <li>ยืนยันการชำระเงิน</li>
+                  </ol>
+                </div>
+              </div>
+            {/if}
+            
+            <div class="payment-action-buttons">
+              <button 
+                class="confirm-payment-btn {isProcessingPayment ? 'processing' : ''}" 
+                on:click={startOmisePurchase}
+                disabled={isProcessingPayment}
+              >
+                {#if isProcessingPayment}
+                  <div class="spinner-small"></div>
+                  กำลังสร้างการชำระเงิน...
+                {:else}
+                  {getSelectedMethod()?.icon} ชำระด้วย {getSelectedMethod()?.name} - ฿{calculateFinalAmount()}
+                {/if}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
+  {/if}
 {/if}
 
 <style>
@@ -568,51 +994,40 @@
   }
   .modal-backdrop {
     position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 486px;
-    height: 786px;
-    background: rgba(4, 3, 25, 0.3);
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
     display: flex;
-    justify-content: center;
     align-items: center;
-    z-index: 9999;
-    backdrop-filter: blur(2px);
-    pointer-events: auto;
-    isolation: isolate;
-    outline: none !important;
-    border: none !important;
-    overflow: visible;
-    border-radius: 34px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    justify-content: center;
+    z-index: 10005;
+    padding: 20px;
+    border-radius: 24px;
+    margin: 10px;
   }
 
   .modal-overlay {
     position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 496px;
-    height: 796px;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
     background: transparent;
-    z-index: 9998;
-    pointer-events: auto;
-    overflow: visible;
-    border-radius: 12px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    z-index: 10004;
+    pointer-events: none;
   }
+
+
 
   .license-modal {
     background: #040319;
     border: 2px solid #00ffff !important;
-    border-radius: 12px;
-    max-width: 480px;
-    width: 92%;
-    max-height: 85vh;
-    height: auto;
+    border-radius: 35px;
+    width: 440px !important;
+    height: 740px !important;
     overflow-y: auto;
     position: fixed;
     top: 50%;
@@ -621,10 +1036,8 @@
     z-index: 10001;
     pointer-events: auto;
     isolation: isolate;
-    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
     outline: none !important;
     backdrop-filter: none;
-    border: 2px solid #00ffff !important;
   }
 
   .vip-button-small {
@@ -648,7 +1061,7 @@
 
   .content-with-vip {
     position: relative;
-    margin-bottom: 2px;
+    margin-bottom: 0px;
     width: 100%;
     max-width: 100%;
   }
@@ -658,114 +1071,106 @@
     justify-content: center;
     align-items: center;
     gap: 10px;
-    margin-top: 22px;
+    margin-top: auto;
+    padding-top: 4px;
     position: relative;
+    width: 100%;
   }
 
   .vip-button-floating {
-    position: absolute;
-    top: 50%;
-    right: -30px;
-    transform: translateY(-34%);
+    position: relative;
     background: rgba(255, 215, 0, 0.1);
     border: 1px solid rgba(255, 215, 0, 0.3);
     color: #ffd700;
-    padding: 20px 0 20px 0;
+    padding: 15px 30px;
     overflow: hidden;
     font-weight: bold;
-    font-size: 1.4rem;
-    border-radius: 12px 0 0 12px;
+    font-size: 2.5rem;
+    border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
     font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    min-width: 55px;
-    min-height: 80px;
-    box-shadow: -2px 0 8px rgba(255, 215, 0, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    padding-left: 0;
-    align-items: flex-start;
-    text-align: left;
+    min-width: 150px;
+    min-height: auto;
+    display: inline-block;
+    margin: 0;
+    text-align: center;
     line-height: 1.2;
     z-index: 10004;
-    text-shadow: 0 2px 4px rgba(255, 215, 0, 0.3);
   }
 
   .vip-text-vertical {
-    font-size: 2.2rem;
+    font-size: 2.5rem;
     font-weight: bold;
     color: #ffd700;
-    transform: rotate(-90deg);
     white-space: nowrap;
-    text-align: left;
-    padding-left: 0;
-    margin-left: 0;
-    text-shadow: 0 2px 4px rgba(255, 215, 0, 0.3);
-    position: absolute;
-    left: -10px;
+    text-align: center;
   }
 
   .vip-button-floating:hover {
-    transform: translateY(-50%) scale(1.02);
-    box-shadow: -4px 0 20px rgba(255, 215, 0, 0.3);
+    transform: scale(1.05);
     background: rgba(255, 215, 0, 0.2);
     border-color: rgba(255, 215, 0, 0.5);
-    box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.4), -4px 0 20px rgba(255, 215, 0, 0.3);
   }
 
   .modal-body {
-    padding: 20px;
+    padding: 15px;
+    height: calc(100% - 30px);
+    display: flex;
+    flex-direction: column;
   }
 
   .payment-intro {
     text-align: center;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: -5px 20px;
+    gap: 6px;
   }
 
   .app-title {
-    margin-bottom: 2px;
+    margin-bottom: 8px;
   }
 
   .app-title h2 {
-    font-size: 4.5rem;
+    font-size: 48px;
     font-weight: 700;
     color: #00ffff;
-    margin: -16px 0 0px 0;
+    margin: 0;
     font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    text-shadow: 0 2px 4px rgba(0, 255, 255, 0.3);
   }
 
   .tagline {
-    font-size: 1.4rem;
+    font-size: 1.1rem;
     color: #cccccc;
-    margin: 0 0 2px 0;
+    margin: 0;
     font-style: italic;
     font-family: 'MiSansThai', sans-serif;
+    line-height: 1.3;
   }
 
   .price-display {
-    margin-bottom: 5px;
+    margin: 2px auto;
     background: rgba(0, 255, 255, 0.1);
-    padding: 12px;
-    border-radius: 15px;
-    border: 1px solid rgba(0, 255, 255, 0.3);
-    width: 60%;
-    margin-left: auto;
-    margin-right: auto;
+    padding: 10px 15px;
+    border-radius: 12px;
+    border: 2px solid #00ffff;
+    width: 70%;
+    box-shadow: 0 4px 12px rgba(0, 255, 255, 0.15);
   }
 
   .price-amount {
-    font-size: 3rem;
+    font-size: 48px;
     font-weight: bold;
     color: #00ffff;
     position: relative;
     z-index: 1;
     font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    text-shadow: 0 2px 4px rgba(0, 255, 255, 0.3);
   }
 
   .price-period {
-    font-size: 1.8rem;
+    font-size: 1.4rem;
     color: #cccccc;
     position: relative;
     z-index: 1;
@@ -775,74 +1180,100 @@
 
   .features-list {
     text-align: center;
-    margin: -18px 0;
-    max-height: 50vh;
-    overflow-y: auto;
+    margin: 2px 0;
     width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
   }
 
   .features-list h4 {
     color: #00ffff;
-    margin-bottom: 10px;
+    margin-bottom: 4px;
     text-align: center;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
+    font-weight: 600;
   }
 
-  .features-list ul {
-    list-style: none;
-    padding: 0;
-    margin: 0 auto;
+  /* Discord Info */
+  .discord-info {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    max-width: 80%;
-  }
-
-  .features-list li {
-    color: #ffffff;
-    margin: 0;
-    font-size: 1rem;
-    line-height: 1.2;
-    padding: 2px 4px;
-    background: transparent;
-    border-radius: 0;
-    border: none;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: rgba(114, 137, 218, 0.1);
+    border: 2px solid rgba(114, 137, 218, 0.3);
+    border-radius: 12px;
+    margin: 10px 0 10px 0;
     transition: all 0.3s ease;
-    text-align: left;
-    word-wrap: break-word;
-    white-space: normal;
-    overflow-wrap: break-word;
-    hyphens: auto;
-    width: 100%;
   }
 
-  .features-list li:hover {
-    background: transparent;
-    border-color: transparent;
-    transform: none;
+  .discord-info:hover {
+    background: rgba(114, 137, 218, 0.15);
+    border-color: rgba(114, 137, 218, 0.5);
+    transform: translateY(-2px);
+  }
+
+  .discord-text {
+    text-align: center;
+  }
+
+  .discord-text h4 {
+    margin: 0 0 5px 0;
+    color: #7289da;
+    font-size: 1.1rem;
+    font-weight: bold;
+  }
+
+  .discord-text p {
+    margin: 0;
+    color: #ffffff;
+    font-size: 18px;
+    opacity: 0.9;
+  }
+
+  .discord-icon {
+    flex-shrink: 0;
+  }
+
+  .discord-icon a {
+    display: block;
+    transition: all 0.3s ease;
+  }
+
+  .discord-icon a:hover {
+    transform: scale(1.1);
+  }
+
+  .discord-icon img {
+    width: 300px;
+    height: 60px;
+    filter: drop-shadow(0 6px 12px rgba(255, 255, 255, 0.3));
+    transition: all 0.3s ease;
+  }
+
+  .discord-icon a:hover img {
+    filter: drop-shadow(0 4px 8px rgba(255, 255, 255, 0.4));
   }
 
   .buy-button {
     background: rgba(0, 255, 255, 0.1);
     border: 1px solid rgba(0, 255, 255, 0.3);
     color: #00ffff;
-    padding: 12px 30px;
+    padding: 15px 30px;
     font-size: 2.5rem;
     font-weight: bold;
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin-top: 22px;
+    margin-top: 0;
     position: relative;
     overflow: hidden;
     font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
     min-width: 150px;
-    box-shadow: 0 3px 12px rgba(0, 255, 255, 0.2);
-    text-shadow: 0 2px 4px rgba(0, 255, 255, 0.3);
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
+    display: inline-block;
+    margin: 0;
   }
 
   .buy-button::before {
@@ -901,16 +1332,14 @@
     display: inline-block;
     border: 2px solid rgba(0, 255, 255, 0.3);
     box-shadow: 0 8px 32px rgba(0, 255, 255, 0.15);
-    backdrop-filter: blur(10px);
   }
 
   .qr-code {
     width: 280px;
     height: 280px;
-    border-radius: 8px;
+    border-radius: 25px;
     object-fit: contain;
     transition: opacity 0.3s ease;
-    box-shadow: 0 4px 20px rgba(0, 255, 255, 0.2);
   }
 
   .qr-code.loading {
@@ -932,7 +1361,6 @@
     text-align: center;
     border: 1px solid rgba(0, 255, 255, 0.3);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(10px);
   }
 
   .spinner-small {
@@ -955,9 +1383,8 @@
     justify-content: center;
     background: linear-gradient(135deg, rgba(255, 0, 0, 0.05) 0%, rgba(255, 0, 0, 0.1) 100%);
     border: 2px dashed #ff0000;
-    border-radius: 8px;
+    border-radius: 15px;
     text-align: center;
-    box-shadow: 0 4px 20px rgba(255, 0, 0, 0.2);
   }
 
   .retry-qr-btn {
@@ -988,9 +1415,8 @@
     align-items: center;
     justify-content: center;
     background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
-    border-radius: 8px;
+    border-radius: 15px;
     border: 2px solid rgba(0, 255, 255, 0.3);
-    box-shadow: 0 4px 20px rgba(0, 255, 255, 0.2);
   }
 
   .qr-loading p {
@@ -1032,7 +1458,7 @@
     border-radius: 18px;
     border: 2px solid rgba(0, 255, 255, 0.3);
     box-shadow: 0 6px 24px rgba(0, 255, 255, 0.15);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(0px);
   }
 
   .payment-instructions h4 {
@@ -1056,7 +1482,7 @@
       border: 2px solid rgba(255, 215, 0, 0.3);
       border-radius: 12px;
       box-shadow: 0 4px 16px rgba(255, 215, 0, 0.15);
-      backdrop-filter: blur(6px);
+
     }
    
    .qr-tips p {
@@ -1147,8 +1573,8 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 10001;
-    backdrop-filter: blur(5px);
+    z-index: 10005;
+
   }
 
   .vip-modal {
@@ -1333,5 +1759,950 @@
     box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
     background: rgba(255, 0, 255, 0.2);
     border-color: rgba(255, 0, 255, 0.5);
+  }
+
+  /* Payment Method Selection Styles */
+  .payment-method-section {
+    margin: 20px 0;
+  }
+
+  .payment-methods-grid {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .payment-method-btn {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+
+  .payment-method-btn:hover {
+    border-color: #00e5ff;
+    background: #f0fcff;
+  }
+
+  .payment-method-btn.selected {
+    border-color: #00e5ff;
+    background: linear-gradient(135deg, #f0fcff 0%, #e0f7ff 100%);
+    box-shadow: 0 4px 12px rgba(0, 229, 255, 0.2);
+  }
+
+  .method-icon {
+    font-size: 32px;
+    margin-right: 16px;
+  }
+
+  .method-info {
+    flex: 1;
+    text-align: left;
+  }
+
+  .method-name {
+    font-weight: bold;
+    font-size: 16px;
+    color: #333;
+  }
+
+  .method-desc {
+    font-size: 14px;
+    color: #666;
+    margin: 4px 0;
+  }
+
+  .method-fees {
+    font-size: 12px;
+    color: #00a86b;
+    font-weight: 500;
+  }
+
+  .selected-indicator {
+    color: #00e5ff;
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  .customer-info-section {
+    margin: 20px 0;
+  }
+
+  .phone-input-group {
+    margin-top: 16px;
+  }
+
+  .customer-phone-input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.2s ease;
+  }
+
+  .customer-phone-input:focus {
+    outline: none;
+    border-color: #00e5ff;
+  }
+
+  .customer-email-input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.2s ease;
+  }
+
+  .customer-email-input:focus {
+    outline: none;
+    border-color: #00e5ff;
+  }
+
+  /* Omise Payment Selection Styles */
+  .omise-payment-section {
+    margin: 20px 0;
+  }
+
+  .payment-label {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    color: #00e5ff;
+    margin-bottom: 16px;
+  }
+
+  .omise-methods-grid {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .omise-method-btn {
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    text-align: left;
+  }
+
+  .omise-method-btn:hover {
+    border-color: #00e5ff;
+    background: #f0fcff;
+  }
+
+  .omise-method-btn.selected {
+    border-color: #00e5ff;
+    background: linear-gradient(135deg, #f0fcff 0%, #e0f7ff 100%);
+    box-shadow: 0 4px 12px rgba(0, 229, 255, 0.2);
+  }
+
+  .method-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .method-icon {
+    font-size: 24px;
+  }
+
+  .method-name {
+    font-weight: bold;
+    font-size: 16px;
+    color: #333;
+    flex: 1;
+  }
+
+  .popular-badge {
+    background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .method-details {
+    margin-left: 36px;
+  }
+
+  .method-desc {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 4px;
+  }
+
+  .method-fees {
+    font-size: 13px;
+    color: #00a86b;
+    font-weight: 500;
+  }
+
+  .selected-indicator {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    color: #00e5ff;
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  .price-breakdown {
+    background: rgba(0, 229, 255, 0.1);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    margin-bottom: 20px;
+  }
+
+  .base-price, .fee-price {
+    font-size: 14px;
+    color: #666;
+    margin: 2px 0;
+  }
+
+  .total-price {
+    font-size: 16px;
+    color: #00e5ff;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(0, 229, 255, 0.2);
+  }
+
+  .free-notice {
+    background: linear-gradient(135deg, #00e5ff, #0099cc);
+    color: white;
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+
+  .omise-purchase-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 100%);
+    color: #000;
+    border: none;
+    border-radius: 16px;
+    padding: 20px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .omise-purchase-btn:hover:not(.processing) {
+    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4);
+  }
+
+  .omise-purchase-btn.processing {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .spinner-small {
+    width: 20px;
+    height: 20px;
+    border: 2px solid transparent;
+    border-top: 2px solid #00e5ff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Payment Selection Modal Styles */
+  .payment-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: transparent;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10005;
+    backdrop-filter: blur(2px);
+    pointer-events: auto;
+    isolation: isolate;
+    outline: none !important;
+    border: none !important;
+    overflow: visible;
+    border-radius: 40px;
+  }
+
+  .payment-modal {
+    background: #040319;
+    border: 2px solid #00ffff !important;
+    border-radius: 35px;
+    width: 440px !important;
+    height: 740px !important;
+    overflow-y: auto;
+    position: relative;
+    z-index: 10004;
+    pointer-events: auto;
+    isolation: isolate;
+    outline: none !important;
+    backdrop-filter: none;
+  }
+
+  .payment-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 25px 30px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+  }
+
+  .payment-modal-header h3 {
+    margin: -30px;
+    color: #00ffff;
+    font-size: 2rem;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: #00ffff;
+    font-size: 1.8rem;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+  }
+
+  .close-btn:hover {
+    background: rgba(0, 255, 255, 0.1);
+    transform: scale(1.1);
+  }
+
+  .payment-modal-body {
+    padding: 15px 20px;
+    height: calc(100% - 80px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .payment-methods-grid {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex: 1;
+  }
+
+  .payment-method-btn {
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    border-radius: 15px;
+    background: rgba(0, 255, 255, 0.05);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    text-align: left;
+  }
+
+  .payment-method-btn:hover {
+    border-color: #00ffff;
+    background: rgba(0, 255, 255, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .payment-method-btn.selected {
+    border-color: #00ffff;
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.1) 0%, rgba(0, 255, 255, 0.15) 100%);
+  }
+
+  .method-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .method-icon {
+    font-size: 28px;
+  }
+
+  .method-name {
+    font-weight: bold;
+    font-size: 18px;
+    color: #ffffff;
+    flex: 1;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .popular-badge {
+    background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+    color: white;
+    padding: 5px 12px;
+    border-radius: 18px;
+    font-size: 13px;
+    font-weight: bold;
+  }
+
+  .method-details {
+    margin-left: 50px;
+  }
+
+  .method-desc {
+    font-size: 16px;
+    color: #cccccc;
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+
+  .method-fees {
+    font-size: 15px;
+    color: #00ffff;
+    font-weight: 500;
+  }
+
+  .selected-indicator {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: #00ffff;
+    font-size: 24px;
+    font-weight: bold;
+  }
+
+  .price-breakdown {
+    background: rgba(0, 255, 255, 0.1);
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    margin-bottom: 15px;
+  }
+
+  .base-price, .fee-price {
+    font-size: 14px;
+    color: #cccccc;
+    margin: 3px 0;
+  }
+
+  .total-price {
+    font-size: 18px;
+    color: #00ffff;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0, 255, 255, 0.2);
+    font-weight: bold;
+  }
+
+  .free-notice {
+    background: linear-gradient(135deg, #00ffff, #0099cc);
+    color: #000000;
+    padding: 12px;
+    border-radius: 12px;
+    text-align: center;
+    margin-bottom: 15px;
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  .email-input-group {
+    margin-bottom: 15px;
+  }
+
+  .email-input-group label {
+    display: block;
+    color: #ffffff;
+    margin-bottom: 8px;
+    font-weight: bold;
+  }
+
+  .customer-email-input {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    font-size: 16px;
+    font-family: 'MiSansThai', sans-serif;
+  }
+
+  .customer-email-input:focus {
+    outline: none;
+    border-color: #00ffff;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+  }
+
+  .customer-email-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .payment-action-buttons {
+    display: flex;
+    gap: 12px;
+    flex-direction: column;
+    margin-top: auto;
+  }
+
+  .confirm-payment-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #00ffff 0%, #0099cc 100%);
+    color: #000000;
+    border: none;
+    border-radius: 15px;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+    margin-top: auto;
+  }
+
+  .confirm-payment-btn:hover:not(.processing) {
+    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
+    transform: translateY(-2px);
+  }
+
+  .confirm-payment-btn.processing {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .cancel-payment-btn {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    padding: 15px;
+    font-size: 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'MiSansThai', sans-serif;
+  }
+
+  .cancel-payment-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  /* Pay Button Styles */
+  .pay-button {
+    background: linear-gradient(135deg, #00ffff 0%, #0099cc 100%);
+    color: #000000;
+    border: none;
+    border-radius: 15px;
+    padding: 18px 30px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .pay-button:hover {
+    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
+    transform: translateY(-2px);
+  }
+
+  /* Payment Page Modal Styles */
+  .payment-page-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10005;
+    backdrop-filter: blur(2px);
+    pointer-events: auto;
+    isolation: isolate;
+    outline: none !important;
+    border: none !important;
+    overflow: visible;
+    border-radius: 40px;
+  }
+
+  .payment-page-modal {
+    background: #040319;
+    border: 2px solid #00ffff !important;
+    border-radius: 35px;
+    width: 440px !important;
+    height: 740px !important;
+    overflow-y: auto;
+    position: relative;
+    z-index: 10006;
+    pointer-events: auto;
+    isolation: isolate;
+    outline: none !important;
+    backdrop-filter: none;
+    user-select: none;
+  }
+
+  .payment-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 25px 30px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+  }
+
+  .back-btn {
+    background: none;
+    border: none;
+    color: #00ffff;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 15px;
+    transition: all 0.3s ease;
+  }
+
+  .back-btn:hover {
+    background: rgba(0, 255, 255, 0.1);
+  }
+
+  .payment-page-header h3 {
+    margin: 0;
+    color: #00ffff;
+    font-size: 2rem;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .amount-display {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #00ffff;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .payment-page-body {
+    padding: 20px 25px;
+    height: calc(100% - 80px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  /* โปรโมชั่น Banner - Compact */
+  .promotion-banner-compact {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 15px;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 140, 0, 0.15) 100%);
+    border: 2px solid rgba(255, 215, 0, 0.4);
+    border-radius: 12px;
+    margin: 18px 0 10px 0;
+    width: 92%;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+
+  /* โปรโมชั่น Banner หลัก */
+  .promotion-banner {
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 140, 0, 0.15) 100%);
+    border: 2px solid rgba(255, 215, 0, 0.4);
+    border-radius: 12px;
+    padding: 15px;
+    margin: 10px 0;
+  }
+
+
+
+  .promo-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .promo-icon {
+    font-size: 2rem;
+    margin-bottom: 4px;
+  }
+
+  .promo-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .promo-title {
+    font-size: 38px;
+    font-weight: bold;
+    color: #ffd700;
+    letter-spacing: 1px;
+  }
+
+  .promo-savings {
+    font-size: 18px;
+    color: #ffffff;
+    font-weight: 600;
+    background: linear-gradient(45deg, #ff6b35, #f7931e);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .promo-price {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0;
+  }
+
+  .old-price {
+    font-size: 16px;
+    color: #cccccc;
+    text-decoration: line-through;
+    opacity: 0.8;
+  }
+
+  .new-price {
+    font-size: 20px;
+    font-weight: bold;
+    color: #ffd700;
+  }
+
+  .timer-compact {
+    font-size: 14px;
+    color: #ffffff;
+    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+
+
+  .promotion-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .promotion-icon {
+    font-size: 1.2rem;
+  }
+
+  .promotion-title {
+    color: #ffd700;
+    font-size: 32px;
+    font-weight: bold;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+    letter-spacing: 1px;
+  }
+
+  .promotion-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+  }
+
+  .price-comparison {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .original-price {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .promotion-price {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .price-label {
+    color: #ffffff;
+    font-size: 20px;
+    opacity: 0.9;
+  }
+
+  .price-value {
+    font-weight: bold;
+    font-size: 24px;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .original-price .price-value {
+    color: #ffffff;
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+
+  .promotion-price .price-value {
+    color: #ffd700;
+    font-size: 38px;
+  }
+
+  .discount-badge {
+    background: #ffd700;
+    color: #000000;
+    padding: 3px 6px;
+    border-radius: 6px;
+    font-size: 20px;
+    font-weight: bold;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .promotion-timer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+
+  .timer-icon {
+    font-size: 0.9rem;
+  }
+
+  .timer-text {
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  .payment-info {
+    text-align: center;
+    margin-bottom: 15px;
+  }
+
+  .payment-info h4 {
+    color: #00ffff;
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+  }
+
+  .payment-info p {
+    color: #cccccc;
+    font-size: 1.1rem;
+    margin-bottom: 20px;
+  }
+
+  .qr-placeholder, .app-placeholder, .card-placeholder {
+    width: 200px;
+    height: 200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    border-radius: 15px;
+  }
+
+  .qr-loading {
+    text-align: center;
+  }
+
+  .qr-loading p {
+    color: #00ffff;
+    margin-top: 15px;
+  }
+
+  .app-icon, .card-icon {
+    font-size: 60px;
+    margin-bottom: 15px;
+  }
+
+  .payment-instructions {
+    background: rgba(0, 255, 255, 0.05);
+    padding: 12px;
+    border-radius: 15px;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    margin-bottom: 15px;
+    flex: 1;
+  }
+
+  .payment-instructions h4 {
+    color: #00ffff;
+    margin-bottom: 8px;
+    font-size: 1.1rem;
+  }
+
+  .payment-instructions ol {
+    color: #ffffff;
+    padding-left: 20px;
+  }
+
+  .payment-instructions li {
+    margin: 4px 0;
+    line-height: 1.2;
+    font-size: 0.9rem;
+  }
+
+  .next-payment-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #00ffff 0%, #0099cc 100%);
+    color: #000000;
+    border: none;
+    border-radius: 15px;
+    padding: 18px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .next-payment-btn:hover {
+    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 255, 255, 0.4);
   }
 </style> 

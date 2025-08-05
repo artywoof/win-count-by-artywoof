@@ -1,0 +1,25 @@
+{
+  "name": "win-count-omise-api",
+  "version": "1.0.0",
+  "description": "Win Count Omise Payment API",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod",
+    "build": "vercel build",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "omise": "^0.11.1",
+    "crypto": "^1.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+} 
