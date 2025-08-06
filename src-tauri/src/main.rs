@@ -19,9 +19,7 @@ use serde_json;
 use std::env;
 use sha2::Sha256;
 
-// Import promptpay module
-mod promptpay;
-use promptpay::{create_promptpay_payment, check_promptpay_status};
+// PromptPay module removed - using promptpay.io instead
 
 // License system removed
 
@@ -180,17 +178,12 @@ fn get_machine_id() -> Result<String, String> {
 // Payment system functions - now using the promptpay module
 #[tauri::command]
 async fn create_promptpay_qr(amount: f64, phone: String) -> Result<String, String> {
-    // Use the new promptpay module
-    let payment = create_promptpay_payment(amount).await?;
-    Ok(format!("data:image/png;base64,{}", payment.qr_code_base64))
+    // Use promptpay.io directly
+    let qr_url = format!("https://promptpay.io/{}/{}", phone, amount);
+    Ok(qr_url)
 }
 
-#[tauri::command]
-async fn check_payment_status(payment_ref: String) -> Result<String, String> {
-    // Use the new promptpay module
-    let status = check_promptpay_status(payment_ref).await?;
-    Ok(serde_json::to_string(&status).map_err(|e| format!("JSON serialization error: {}", e))?)
-}
+// Payment status check removed - using promptpay.io instead
 
 #[tauri::command]
 fn update_hotkey(action: String, hotkey: String) -> Result<(), String> {
@@ -2078,7 +2071,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
 
-        .invoke_handler(tauri::generate_handler![greet, get_app_version, validate_license_key, save_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart, create_promptpay_qr, promptpay::create_promptpay_payment, promptpay::check_promptpay_status])
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, validate_license_key, save_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart, create_promptpay_qr])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();

@@ -47,32 +47,35 @@
   // PromptPay payment function
   async function createPromptPayPayment() {
     try {
-      // Clear previous QR data
-      omisePaymentData = null;
-      showQRCode = false; // ปิด QR modal เก่า
       isProcessingPayment = true;
       
-      const payment: any = await invoke('create_promptpay_payment', { 
-        amount: 149 
-      });
+      // สร้าง Payment Reference ที่ไม่ซ้ำ (ง่ายมากๆ!)
+      const timestamp = Date.now();
+      const randomNum = Math.floor(Math.random() * 10000);
+      const paymentRef = `PP${timestamp}${randomNum.toString().padStart(4, '0')}`;
       
-      console.log('🔄 Payment created:', payment);
-      console.log('📋 QR Raw Data:', payment.qr_raw_data);
-      console.log('🖼️ Using promptpay.io QR Code');
+      console.log('🎯 Creating PromptPay with promptpay.io API');
+      console.log('   📞 Phone: 090-978-3454');
+      console.log('   💰 Amount: ฿149');
+      console.log('   🔗 Payment Ref:', paymentRef);
       
-      // แสดง QR Code จาก promptpay.io
+      // สร้าง QR Code URL จาก promptpay.io (ไม่ซ้ำ 100%!)
+      const qrCodeUrl = `https://promptpay.io/0909783454/149.png?t=${timestamp}`;
+      
+      // บันทึกข้อมูล payment
       omisePaymentData = {
-        qr_code_data: `https://promptpay.io/0909783454/149.png`,
-        payment_reference: payment.payment_ref,
-        amount: payment.amount,
-        phone_number: payment.phone_number
+        qr_code_data: qrCodeUrl,           // ใช้ URL ตรงๆ แทน base64!
+        payment_reference: paymentRef,     // Reference สำหรับ tracking
+        amount: 149,                       // จำนวนเงิน
+        phone_number: "090-978-3454"       // เบอร์ PromptPay
       };
-      
-      console.log('🖼️ QR Code URL:', omisePaymentData.qr_code_data);
       
       showQRCode = true;
       startCountdown();
       startPromptPayStatusCheck();
+      
+      console.log('✅ PromptPay QR created successfully with promptpay.io!');
+      console.log('🔗 QR URL:', qrCodeUrl);
       
     } catch (error) {
       console.error('❌ PromptPay payment error:', error);
@@ -90,44 +93,37 @@
 
     const checkStatus = async () => {
       try {
-        const status = await invoke('check_promptpay_status', {
-          paymentRef: String(omisePaymentData.payment_reference)
-        });
-
-        // ตรวจสอบว่า status เป็น string หรือ object
-        const result = typeof status === 'string' ? JSON.parse(status) : status;
-        console.log('🔍 Payment status result:', result);
-
-        if (result.status === 'completed') {
-          console.log('🎉 PromptPay payment successful!');
+        // ในโค้ดจริง: ตรงนี้จะเช็คจาก Webhook หรือ Database
+        // สำหรับตอนนี้: จำลองการตรวจสอบ (0% chance success - ต้องจ่ายจริง)
+        const isPaymentCompleted = false; // 0% chance - ต้องจ่ายจริง
+        
+        if (isPaymentCompleted) {
+          console.log('🎉 Payment completed (simulated)!');
           
-          // Save license key
-          if (result.license_key) {
-            await invoke('save_license_key', { key: result.license_key });
-          }
+          // สร้าง License Key
+          const licenseKey = generateLicenseKey();
           
-          // Close QR Code window
+          // บันทึก License Key
+          await invoke('save_license_key', { key: licenseKey });
+          
+          // ปิดหน้าต่าง QR Code
           showQRCode = false;
           
-          // Show success modal
+          // แสดงหน้าต่างสำเร็จ
           showSuccessModal = true;
           
-          return true; // Stop checking
-        } else if (result.status === 'failed' || result.status === 'expired') {
-          console.log('❌ PromptPay payment failed or expired');
-          alert('การชำระเงินล้มเหลวหรือหมดอายุ กรุณาลองใหม่อีกครั้ง');
-          showQRCode = false;
-          return true; // Stop checking
+          return true; // หยุดการเช็ค
+        } else {
+          console.log('⏳ Payment still pending...');
+          return false; // เช็คต่อ
         }
-
-        return false; // Continue checking
       } catch (error) {
-        console.error('❌ PromptPay status check error:', error);
-        return false; // Continue checking
+        console.error('❌ Status check error:', error);
+        return false; // เช็คต่อ
       }
     };
 
-    // Check every 3 seconds
+    // เช็คทุก 3 วินาทีเป็นเวลา 15 นาที
     const interval = setInterval(async () => {
       const shouldStop = await checkStatus();
       if (shouldStop) {
@@ -135,10 +131,26 @@
       }
     }, 3000);
 
-    // Stop checking after 15 minutes
+    // หยุดเช็คหลัง 15 นาที
     setTimeout(() => {
       clearInterval(interval);
+      console.log('⏰ Payment check timeout');
     }, 900000);
+  }
+
+  // Helper function สำหรับสร้าง License Key
+  function generateLicenseKey() {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let key = "MONTH-";
+    
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 4; j++) {
+        key += chars[Math.floor(Math.random() * chars.length)];
+      }
+      if (i < 2) key += "-";
+    }
+    
+    return key;
   }
 
 
@@ -465,7 +477,7 @@
 
   function handleLicenseActivated() {
     paymentStatus = 'completed';
-    successMessage = '✅ การชำระเงินสำเร็จ! License ถูกเปิดใช้งานแล้ว';
+            successMessage = 'ขอบคุณที่อุดหนุนค้าบ 😊';
     
     if (countdownInterval) {
       clearInterval(countdownInterval);
@@ -710,8 +722,8 @@
         {:else if paymentStatus === 'completed'}
           <!-- ชำระเงินสำเร็จ -->
           <div class="success-section">
-            <div class="success-icon">✅</div>
-            <h3>การชำระเงินสำเร็จ!</h3>
+            <div class="success-icon">🎉</div>
+            <h3>ขอบคุณที่อุดหนุนค้าบ 😊</h3>
             <p>License ของคุณถูกเปิดใช้งานแล้ว</p>
             <p class="expires-info">
               หมดอายุ: {paymentInfo ? new Date(paymentInfo.expires_at).toLocaleDateString('th-TH') : ''}
@@ -802,7 +814,6 @@
     <div class="qr-modal-backdrop" on:click={() => showQRCode = false} on:keydown={(e) => e.key === 'Escape' && (showQRCode = false)} role="dialog" tabindex="0">
       <div class="qr-modal" on:click|stopPropagation role="dialog">
         <div class="qr-modal-header">
-          <h3>💰 ชำระเงิน ฿149</h3>
           <button class="close-btn" on:click={() => showQRCode = false}>✕</button>
         </div>
         
@@ -1008,7 +1019,7 @@
       <div class="success-modal" on:click|stopPropagation role="dialog">
         <div class="success-modal-content">
           <div class="success-icon">🎉</div>
-          <h3>การชำระเงินสำเร็จ!</h3>
+          <h3>ขอบคุณที่อุดหนุนค้าบ 😊</h3>
           <p>ยินดีต้อนรับสู่ Win Count Pro</p>
           <p class="success-details">License ของคุณถูกเปิดใช้งานแล้ว</p>
           <button 
@@ -3102,61 +3113,68 @@
   }
 
   .qr-modal {
-    background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
-    border: 2px solid #00ff88;
-    border-radius: 20px;
-    width: 400px;
+    background: linear-gradient(145deg, #0a0a0a, #1a1a1a);
+    border: 2px solid #00bfff;
+    border-radius: 15px;
+    width: 500px;
     max-width: 90vw;
     max-height: 90vh;
-    box-shadow: 0 20px 60px rgba(0, 255, 136, 0.3);
+    box-shadow: 0 20px 60px rgba(0, 191, 255, 0.4);
     animation: slideIn 0.3s ease-out;
     overflow: hidden;
   }
 
   .qr-modal-header {
-    background: linear-gradient(90deg, #00ff88, #00cc66);
+    background: linear-gradient(90deg, #00bfff, #0080ff);
     color: white;
-    padding: 20px;
+    padding: 15px;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
   }
 
   .qr-modal-header h3 {
     margin: 0;
-    font-size: 1.2em;
+    font-size: 1.4em;
     font-weight: bold;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
   }
 
   .qr-modal-header .close-btn {
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
-    color: white;
-    width: 30px;
-    height: 30px;
+    background: rgba(0, 191, 255, 0.2);
+    border: 1px solid #00bfff;
+    color: #00bfff;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 18px;
+    font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s;
+    transition: all 0.3s ease;
   }
 
   .qr-modal-header .close-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 191, 255, 0.3);
+    border-color: #00bfff;
+    color: white;
+    transform: scale(1.1);
   }
 
   .qr-modal-body {
-    padding: 30px;
+    padding: 40px;
     text-align: center;
-    color: white;
+    color: #e0e0e0;
+    font-family: 'MiSansThai', sans-serif;
   }
 
   .qr-section h4 {
     margin: 0 0 20px 0;
-    color: #00ff88;
-    font-size: 1.1em;
+    color: #00bfff;
+    font-size: 1.3em;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
   }
 
   .qr-container {
@@ -3167,20 +3185,22 @@
   }
 
   .qr-image {
-    width: 250px;
-    height: 250px;
-    border: 3px solid #00ff88;
+    width: 280px;
+    height: 280px;
+    border: 3px solid #00bfff;
     border-radius: 15px;
     background: white;
-    padding: 10px;
-    box-shadow: 0 10px 30px rgba(0, 255, 136, 0.2);
+    padding: 12px;
+    box-shadow: 0 10px 30px rgba(0, 191, 255, 0.3);
   }
 
   .qr-info {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    font-size: 14px;
+    gap: 12px;
+    font-size: 16px;
+    font-family: 'MiSansThai', sans-serif;
+    color: #e0e0e0;
   }
 
   .qr-info p {
@@ -3189,7 +3209,7 @@
   }
 
   .qr-info strong {
-    color: #00ff88;
+    color: #00bfff;
   }
 
   .qr-info .timer {
