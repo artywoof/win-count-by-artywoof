@@ -42,7 +42,7 @@
   let customerPhone = '';
   let customerEmail = '';
   let isProcessingPayment = false;
-  let omisePaymentData = null;
+  let omisePaymentData: any = null;
   let showPaymentSelection = false; // หน้าต่างเลือกวิธีชำระเงิน
   let showPaymentPage = false; // หน้าชำระเงินแต่ละวิธี
   let currentPaymentStep = 'selection'; // 'selection' หรือ 'payment'
@@ -98,6 +98,195 @@
     return 149;
   }
 
+  // New payment functions for PromptPay and True Wallet
+  async function createPromptPayPayment() {
+    try {
+      isProcessingPayment = true;
+      
+      const payment: any = await invoke('create_promptpay_payment', { 
+        amount: 149 
+      });
+      
+      // แสดง QR Code ในแอป
+      omisePaymentData = {
+        qr_code_data: `data:image/svg+xml;base64,${payment.qr_code_base64}`,
+        payment_reference: payment.payment_ref,
+        amount: payment.amount,
+        phone_number: payment.phone_number
+      };
+      
+      showQRCode = true;
+      startCountdown();
+      startPromptPayStatusCheck();
+      
+    } catch (error) {
+      console.error('❌ PromptPay payment error:', error);
+      errorMessage = 'ไม่สามารถสร้าง QR Code ได้';
+    } finally {
+      isProcessingPayment = false;
+    }
+  }
+
+  async function startTrueWalletPayment() {
+    isProcessingPayment = true;
+
+    try {
+      console.log('💙 Starting True Wallet payment...');
+      
+      // Call True Wallet API
+      const response = await fetch('https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api/create-truewallet-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: calculateFinalAmount(),
+          customer_phone: customerPhone || '0800000000',
+          customer_email: customerEmail || 'customer@example.com'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`True Wallet API error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        omisePaymentData = result;
+        
+        // Open True Wallet App
+        if (result.deep_link) {
+          window.open(result.deep_link, '_blank');
+        }
+        
+        startCountdown();
+        startTrueWalletStatusCheck();
+        
+      } else {
+        throw new Error(result.message || 'True Wallet payment creation failed');
+      }
+
+    } catch (error) {
+      console.error('❌ True Wallet payment error:', error);
+      alert(`เกิดข้อผิดพลาดในการชำระเงิน: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      isProcessingPayment = false;
+    }
+  }
+
+  // PromptPay Status Check
+  async function startPromptPayStatusCheck() {
+    if (!omisePaymentData) return;
+
+    const checkStatus = async () => {
+      try {
+        const status = await invoke('check_payment_status', {
+          payment_ref: String(omisePaymentData.payment_reference)
+        });
+
+        const result = JSON.parse(status);
+
+        if (result.status === 'completed') {
+          console.log('🎉 PromptPay payment successful!');
+          
+          // Save license key
+          if (result.license_key) {
+            await invoke('save_license_key', { key: result.license_key });
+          }
+          
+          // Close payment window
+          showPaymentPage = false;
+          showPaymentSelection = false;
+          
+          // Show success modal
+          showSuccessModal = true;
+          
+          return true; // Stop checking
+        } else if (result.status === 'failed' || result.status === 'expired') {
+          console.log('❌ PromptPay payment failed or expired');
+          alert('การชำระเงินล้มเหลวหรือหมดอายุ กรุณาลองใหม่อีกครั้ง');
+          showQRCode = false;
+          return true; // Stop checking
+        }
+
+        return false; // Continue checking
+      } catch (error) {
+        console.error('❌ PromptPay status check error:', error);
+        return false; // Continue checking
+      }
+    };
+
+    // Check every 3 seconds
+    const interval = setInterval(async () => {
+      const shouldStop = await checkStatus();
+      if (shouldStop) {
+        clearInterval(interval);
+      }
+    }, 3000);
+
+    // Stop checking after 15 minutes
+    setTimeout(() => {
+      clearInterval(interval);
+    }, 900000);
+  }
+
+  // True Wallet Status Check
+  async function startTrueWalletStatusCheck() {
+    if (!omisePaymentData) return;
+
+    const checkStatus = async () => {
+      try {
+        const response = await fetch('https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api/check-payment-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            charge_id: omisePaymentData.charge_id,
+            payment_reference: omisePaymentData.payment_reference
+          })
+        });
+
+        const status = await response.json();
+
+        if (status.success && status.payment_status === 'COMPLETED') {
+          console.log('🎉 True Wallet payment successful!');
+          
+          // Save license key
+          await invoke('save_license_key', { key: status.license_key });
+          
+          // Close payment window
+          showPaymentPage = false;
+          showPaymentSelection = false;
+          
+          // Show success modal
+          showSuccessModal = true;
+          
+          return true; // Stop checking
+        } else if (status.payment_status === 'FAILED') {
+          console.log('❌ True Wallet payment failed');
+          alert('การชำระเงินล้มเหลว กรุณาลองใหม่อีกครั้ง');
+          return true; // Stop checking
+        }
+
+        return false; // Continue checking
+      } catch (error) {
+        console.error('❌ True Wallet status check error:', error);
+        return false; // Continue checking
+      }
+    };
+
+    // Check every 3 seconds
+    const interval = setInterval(async () => {
+      const shouldStop = await checkStatus();
+      if (shouldStop) {
+        clearInterval(interval);
+      }
+    }, 3000);
+
+    // Stop checking after 15 minutes
+    setTimeout(() => {
+      clearInterval(interval);
+    }, 900000);
+  }
+
   // Enhanced startPurchase function สำหรับ Omise
   async function startOmisePurchase() {
     isProcessingPayment = true;
@@ -139,17 +328,17 @@
           window.open(result.linepay_url, '_blank');
         }
         
-        startPaymentTimer();
+        startCountdown();
         startOmisePaymentStatusCheck();
         
       } else {
         throw new Error(result.message || 'Omise payment creation failed');
       }
 
-    } catch (error) {
-      console.error('❌ Omise payment error:', error);
-      alert(`เกิดข้อผิดพลาดในการชำระเงิน: ${error.message}`);
-    } finally {
+          } catch (error) {
+        console.error('❌ Omise payment error:', error);
+        alert(`เกิดข้อผิดพลาดในการชำระเงิน: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
       isProcessingPayment = false;
     }
   }
@@ -831,10 +1020,27 @@
                 <div class="qr-section">
                   <h3>📱 PromptPay QR Code</h3>
                   <div class="qr-container">
-                    <div class="qr-loading">
-                      <div class="spinner"></div>
-                      <p>กำลังสร้าง QR Code...</p>
-                    </div>
+                    {#if isProcessingPayment}
+                      <div class="qr-loading">
+                        <div class="spinner"></div>
+                        <p>กำลังสร้าง QR Code...</p>
+                      </div>
+                    {:else if omisePaymentData?.qr_code_data}
+                      <!-- แสดง QR Code -->
+                      <div class="qr-container">
+                        <img 
+                          src={omisePaymentData.qr_code_data} 
+                          alt="PromptPay QR Code"
+                          class="qr-image"
+                        />
+                        <p>สแกนด้วยแอป Banking</p>
+                        <p>฿149 → 090-978-3454</p>
+                      </div>
+                    {:else}
+                      <div class="qr-placeholder">
+                        <p>กดปุ่ม "เปย์" เพื่อสร้าง QR Code</p>
+                      </div>
+                    {/if}
                   </div>
                   <div class="qr-info">
                     <p class="qr-amount">฿{calculateFinalAmount()}</p>
@@ -861,7 +1067,15 @@
             <div class="payment-action-buttons">
               <button 
                 class="confirm-payment-btn {isProcessingPayment ? 'processing' : ''}" 
-                on:click={startOmisePurchase}
+                on:click={() => {
+                  if (selectedPaymentMethod === 'promptpay') {
+                    createPromptPayPayment();
+                  } else if (selectedPaymentMethod === 'truewallet') {
+                    startTrueWalletPayment();
+                  } else {
+                    startOmisePurchase();
+                  }
+                }}
                 disabled={isProcessingPayment}
               >
                 {#if isProcessingPayment}
@@ -1369,6 +1583,44 @@
     background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
     border-radius: 15px;
     border: 2px solid rgba(0, 255, 255, 0.3);
+  }
+
+  .qr-code-image {
+    width: 320px;
+    height: 320px;
+    max-width: 320px;
+    max-height: 320px;
+    border-radius: 15px;
+    object-fit: contain;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 32px rgba(0, 255, 255, 0.2);
+  }
+
+  .qr-placeholder {
+    width: 280px;
+    height: 280px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
+    border-radius: 15px;
+    border: 2px dashed rgba(0, 255, 255, 0.3);
+    color: rgba(0, 255, 255, 0.7);
+    font-family: 'MiSansThai', sans-serif;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .qr-image {
+    width: 320px;
+    height: 320px;
+    max-width: 320px;
+    max-height: 320px;
+    border-radius: 15px;
+    object-fit: contain;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 32px rgba(0, 255, 255, 0.2);
   }
 
   .qr-loading p {
