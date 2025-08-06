@@ -46,38 +46,27 @@
   let showPaymentSelection = false; // หน้าต่างเลือกวิธีชำระเงิน
   let showPaymentPage = false; // หน้าชำระเงินแต่ละวิธี
   let currentPaymentStep = 'selection'; // 'selection' หรือ 'payment'
+  let showSuccessModal = false; // หน้าต่างแจ้งเตือนสำเร็จ
 
-  // Omise Payment Methods พร้อมข้อมูลที่ถูกต้อง
-  const omisePaymentMethods = [
+  // Payment Methods พร้อมโลโก้
+  const paymentMethods = [
     {
       id: 'promptpay',
       name: 'PromptPay',
-      icon: '📱',
+      logo: '/assets/logo/promptpay.png',
       description: 'สแกน QR Code ผ่านแอป Banking ทุกธนาคาร',
       fees: 'ฟรี (0%)',
       processing_time: 'ทันที',
-      popular: true,
-      thai_only: true
+      popular: true
     },
     {
       id: 'truewallet',
       name: 'True Wallet',
-      icon: '💙',
+      logo: '/assets/logo/truemoneywallet.png',
       description: 'จ่ายผ่าน True Wallet App',
       fees: '1.65%',
       processing_time: 'ทันที',
-      popular: true,
-      thai_only: true
-    },
-    {
-      id: 'card',
-      name: 'บัตรเครดิต/เดบิต',
-      icon: '💳',
-      description: 'Visa, Mastercard, JCB ทุกธนาคาร',
-      fees: '2.65%',
-      processing_time: 'ทันที',
-      popular: false,
-      thai_only: false
+      popular: true
     }
   ];
 
@@ -86,10 +75,6 @@
   }
 
   function goToPaymentPage() {
-    if (!customerEmail || !validateEmail(customerEmail)) {
-      alert('⚠️ กรุณากรอกอีเมลให้ถูกต้อง');
-      return;
-    }
     currentPaymentStep = 'payment';
     showPaymentPage = true;
   }
@@ -100,7 +85,7 @@
   }
 
   function getSelectedMethod() {
-    return omisePaymentMethods.find(method => method.id === selectedPaymentMethod);
+    return paymentMethods.find(method => method.id === selectedPaymentMethod);
   }
 
   function calculateFinalAmount() {
@@ -108,23 +93,13 @@
     if (!selectedMethod) return 149;
     
     if (selectedMethod.id === 'promptpay') return 149; // ฟรี
+    if (selectedMethod.id === 'truewallet') return Math.ceil(149 * 1.0165); // 1.65%
     
-    const feeRate = {
-      'truewallet': 0.0165,
-      'rabbit_linepay': 0.023,
-      'card': 0.0265
-    }[selectedMethod.id] || 0;
-    
-    return Math.ceil(149 * (1 + feeRate));
+    return 149;
   }
 
   // Enhanced startPurchase function สำหรับ Omise
   async function startOmisePurchase() {
-    if (!customerEmail || !validateEmail(customerEmail)) {
-      alert('⚠️ กรุณากรอกอีเมลให้ถูกต้อง');
-      return;
-    }
-
     isProcessingPayment = true;
 
     try {
@@ -137,7 +112,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           machine_id: machineId,
-          customer_email: customerEmail,
+          customer_email: 'customer@example.com',
           payment_method: selectedPaymentMethod
         })
       });
@@ -202,13 +177,12 @@
           // บันทึก License Key
           await invoke('save_license_key', { key: omisePaymentData.license_key });
           
-          showQRCode = false;
-          showSuccessMessage('🎉 การชำระเงินสำเร็จ! ยินดีต้อนรับสู่ Win Count Pro');
+          // ปิดหน้าต่างจ่ายเงินทันที
+          showPaymentPage = false;
+          showPaymentSelection = false;
           
-          setTimeout(() => {
-            closeModal();
-            onLicenseValid();
-          }, 2000);
+          // แสดงหน้าต่างแจ้งเตือนสำเร็จ
+          showSuccessModal = true;
           
           return true; // Stop checking
         } else if (status.payment_status === 'FAILED') {
@@ -538,7 +512,7 @@
 </script>
 
 {#if isOpen}
-  <div class="modal-backdrop" on:click={(e) => e.target === e.currentTarget && closeModal()} on:keydown={(e) => e.key === 'Escape' && closeModal()} role="dialog" tabindex="0">
+  <div class="modal-backdrop" on:click={(e) => e.preventDefault()} on:keydown={(e) => e.key === 'Escape' && closeModal()} role="dialog" tabindex="0">
     <div class="modal-overlay" on:click|stopPropagation role="presentation"></div>
     <div class="modal license-modal" on:click|stopPropagation on:mousedown|stopPropagation on:mouseup|stopPropagation role="dialog" aria-labelledby="license-modal-title" tabindex="0" on:focus|preventDefault on:blur|preventDefault>
       <div class="modal-body">
@@ -778,27 +752,21 @@
     <div class="payment-modal-backdrop" on:click={() => showPaymentSelection = false} on:keydown={(e) => e.key === 'Escape' && (showPaymentSelection = false)} role="dialog" tabindex="0">
       <div class="payment-modal" on:click|stopPropagation role="dialog">
         <div class="payment-modal-header">
-          <h3>💳 เลือกวิธีการชำระเงิน</h3>
-          <button class="close-btn" on:click={() => showPaymentSelection = false}>✕</button>
         </div>
         
         <div class="payment-modal-body">
           <div class="payment-methods-grid">
-            {#each omisePaymentMethods as method}
+            {#each paymentMethods as method}
               <button 
                 class="payment-method-btn {selectedPaymentMethod === method.id ? 'selected' : ''}"
                 on:click={() => selectPaymentMethod(method.id)}
               >
-                <div class="method-header">
-                  <div class="method-icon">{method.icon}</div>
-                  <div class="method-name">{method.name}</div>
-                  {#if method.popular}
-                    <span class="popular-badge">ยอดนิยม</span>
-                  {/if}
-                </div>
-                <div class="method-details">
-                  <div class="method-desc">{method.description}</div>
-                  <div class="method-fees">ค่าธรรมเนียม: <strong>{method.fees}</strong></div>
+                <div class="method-logo">
+                  <img 
+                    src={method.logo} 
+                    alt="{method.name}" 
+                    class="method-logo-img {method.id}-logo"
+                  />
                 </div>
                 {#if selectedPaymentMethod === method.id}
                   <div class="selected-indicator">✓</div>
@@ -807,40 +775,18 @@
             {/each}
           </div>
           
-          <!-- ราคารวมตามวิธีชำระ -->
-          {#if selectedPaymentMethod !== 'promptpay'}
-            <div class="price-breakdown">
-              <div class="base-price">ราคาแอพ: ฿149</div>
-              <div class="fee-price">ค่าธรรมเนียม: ฿{calculateFinalAmount() - 149}</div>
-              <div class="total-price">รวมทั้งสิ้น: <strong>฿{calculateFinalAmount()}</strong></div>
-            </div>
-          {:else}
-            <div class="free-notice">
-              🎉 <strong>PromptPay ฟรีค่าธรรมเนียม!</strong> จ่ายเพียง ฿149
-            </div>
-          {/if}
-          
-          <div class="email-input-group">
-            <label for="customer-email">อีเมลของคุณ:</label>
-            <input 
-              id="customer-email"
-              type="email" 
-              placeholder="example@email.com" 
-              bind:value={customerEmail}
-              class="customer-email-input"
-              required
-            />
-          </div>
-          
           <div class="payment-action-buttons">
             <button 
-              class="next-payment-btn" 
+              class="confirm-payment-btn" 
               on:click={goToPaymentPage}
             >
-              ต่อไป →
+              ยืนยัน
             </button>
             
-            <button class="cancel-payment-btn" on:click={() => showPaymentSelection = false}>
+            <button 
+              class="cancel-payment-btn" 
+              on:click={() => showPaymentSelection = false}
+            >
               ยกเลิก
             </button>
           </div>
@@ -850,11 +796,11 @@
 
     <!-- Payment Page Modal -->
     {#if showPaymentPage}
-      <div class="payment-page-backdrop" on:click={goBackToSelection} on:keydown={(e) => e.key === 'Escape' && goBackToSelection()} role="dialog" tabindex="0">
-        <div class="payment-page-modal" on:click|stopPropagation on:mousedown|stopPropagation on:mouseup|stopPropagation role="dialog">
+      <div class="payment-page-backdrop" on:click={(e) => e.preventDefault()} role="dialog" tabindex="0">
+        <div class="payment-page-modal" on:click|stopPropagation role="dialog" style="border: 4px solid #00ffff !important; border-width: 4px !important;">
           <div class="payment-page-header">
             <button class="back-btn" on:click={goBackToSelection}>← กลับ</button>
-            <h3>{getSelectedMethod()?.icon} {getSelectedMethod()?.name}</h3>
+            <h3>{getSelectedMethod()?.name}</h3>
             <div class="amount-display">฿{calculateFinalAmount()}</div>
           </div>
           
@@ -932,29 +878,6 @@
                   </ol>
                 </div>
               </div>
-            {:else if selectedPaymentMethod === 'card'}
-              <!-- Credit/Debit Card Payment Page -->
-              <div class="card-section">
-                <div class="payment-info">
-                  <h4>💳 บัตรเครดิต/เดบิต</h4>
-                  <p>Visa, Mastercard, JCB ทุกธนาคาร</p>
-                  <div class="card-placeholder">
-                    <div class="card-icon">💳</div>
-                    <p>กรอกข้อมูลบัตร</p>
-                  </div>
-                </div>
-                
-                <div class="payment-instructions">
-                  <h4>📋 วิธีชำระเงิน:</h4>
-                  <ol>
-                    <li>กรอกหมายเลขบัตรเครดิต/เดบิต</li>
-                    <li>กรอกวันหมดอายุและ CVV</li>
-                    <li>กรอกชื่อผู้ถือบัตร</li>
-                    <li>ตรวจสอบข้อมูล: จำนวนเงิน ฿{calculateFinalAmount()}</li>
-                    <li>ยืนยันการชำระเงิน</li>
-                  </ol>
-                </div>
-              </div>
             {/if}
             
             <div class="payment-action-buttons">
@@ -967,7 +890,7 @@
                   <div class="spinner-small"></div>
                   กำลังสร้างการชำระเงิน...
                 {:else}
-                  {getSelectedMethod()?.icon} ชำระด้วย {getSelectedMethod()?.name} - ฿{calculateFinalAmount()}
+                  ชำระด้วย {getSelectedMethod()?.name} - ฿{calculateFinalAmount()}
                 {/if}
               </button>
             </div>
@@ -975,6 +898,30 @@
         </div>
       </div>
     {/if}
+  {/if}
+
+  <!-- Success Modal -->
+  {#if showSuccessModal}
+    <div class="success-modal-backdrop" on:click={() => showSuccessModal = false} on:keydown={(e) => e.key === 'Escape' && (showSuccessModal = false)} role="dialog" tabindex="0">
+      <div class="success-modal" on:click|stopPropagation role="dialog">
+        <div class="success-modal-content">
+          <div class="success-icon">🎉</div>
+          <h3>การชำระเงินสำเร็จ!</h3>
+          <p>ยินดีต้อนรับสู่ Win Count Pro</p>
+          <p class="success-details">License ของคุณถูกเปิดใช้งานแล้ว</p>
+          <button 
+            class="success-close-btn" 
+            on:click={() => {
+              showSuccessModal = false;
+              closeModal();
+              onLicenseValid();
+            }}
+          >
+            ตกลง
+          </button>
+        </div>
+      </div>
+    </div>
   {/if}
 {/if}
 
@@ -998,8 +945,8 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1007,6 +954,7 @@
     padding: 20px;
     border-radius: 24px;
     margin: 10px;
+    pointer-events: all;
   }
 
   .modal-overlay {
@@ -1024,7 +972,7 @@
 
   .license-modal {
     background: #040319;
-    border: 2px solid #00ffff !important;
+    border: 4px solid #00ffff !important;
     border-radius: 35px;
     width: 440px !important;
     height: 740px !important;
@@ -1082,21 +1030,36 @@
     background: rgba(255, 215, 0, 0.1);
     border: 1px solid rgba(255, 215, 0, 0.3);
     color: #ffd700;
-    padding: 15px 30px;
+    padding: 18px 30px;
     overflow: hidden;
     font-weight: bold;
-    font-size: 2.5rem;
+    font-size: 2.2rem;
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
     font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    min-width: 150px;
-    min-height: auto;
+    min-width: 140px;
+    min-height: 55px;
     display: inline-block;
     margin: 0;
     text-align: center;
     line-height: 1.2;
     z-index: 10004;
+  }
+
+  .vip-button-floating::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s;
+  }
+
+  .vip-button-floating:hover::before {
+    left: 100%;
   }
 
   .vip-text-vertical {
@@ -1105,12 +1068,21 @@
     color: #ffd700;
     white-space: nowrap;
     text-align: center;
+    transition: all 0.3s ease;
+  }
+
+  .vip-button-floating:hover .vip-text-vertical {
+    font-size: 2.5rem;
+    color: #ffd700;
   }
 
   .vip-button-floating:hover {
-    transform: scale(1.05);
+    padding: 18px 30px;
+    font-size: 2.5rem;
+    min-width: 140px;
+    min-height: 55px;
     background: rgba(255, 215, 0, 0.2);
-    border-color: rgba(255, 215, 0, 0.5);
+    border-color: rgba(255, 215, 0, 0.6);
   }
 
   .modal-body {
@@ -1201,19 +1173,17 @@
     flex-direction: column;
     align-items: center;
     gap: 15px;
-    padding: 15px;
+    padding: 26px;
+    padding-top: 30px;
     background: rgba(114, 137, 218, 0.1);
     border: 2px solid rgba(114, 137, 218, 0.3);
     border-radius: 12px;
-    margin: 10px 0 10px 0;
+    margin: px 0 10px 0;
     transition: all 0.3s ease;
+    min-height: 0px;
   }
 
-  .discord-info:hover {
-    background: rgba(114, 137, 218, 0.15);
-    border-color: rgba(114, 137, 218, 0.5);
-    transform: translateY(-2px);
-  }
+
 
   .discord-text {
     text-align: center;
@@ -1239,23 +1209,22 @@
 
   .discord-icon a {
     display: block;
-    transition: all 0.3s ease;
   }
 
-  .discord-icon a:hover {
-    transform: scale(1.1);
-  }
+
 
   .discord-icon img {
     width: 300px;
     height: 60px;
-    filter: drop-shadow(0 6px 12px rgba(255, 255, 255, 0.3));
     transition: all 0.3s ease;
   }
 
   .discord-icon a:hover img {
-    filter: drop-shadow(0 4px 8px rgba(255, 255, 255, 0.4));
+    transform: scale(1.1);
+    filter: brightness(1.2);
   }
+
+
 
   .buy-button {
     background: rgba(0, 255, 255, 0.1);
@@ -1291,9 +1260,7 @@
     left: 100%;
   }
 
-  .buy-button:hover:not(:disabled) {
-    /* ไม่มี hover effect */
-  }
+
 
   .buy-button:disabled {
     opacity: 0.7;
@@ -2071,36 +2038,81 @@
     backdrop-filter: none;
   }
 
+  /* Responsive Design */
+  @media (max-width: 480px) {
+    .payment-modal {
+      width: 95vw !important;
+      height: 90vh !important;
+      border-radius: 25px;
+    }
+    
+    .payment-method-btn {
+      max-width: 280px;
+      min-height: 120px;
+      padding: 30px 20px;
+    }
+    
+    .method-logo {
+      width: 100px;
+      height: 75px;
+    }
+    
+    .truewallet-logo {
+      width: 150px !important;
+      height: 150px !important;
+      max-width: 150px !important;
+      max-height: 150px !important;
+    }
+    
+    .promptpay-logo {
+      width: auto !important;
+      height: auto !important;
+      max-width: 300% !important;
+      max-height: 300% !important;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .payment-modal {
+      width: 98vw !important;
+      height: 95vh !important;
+      border-radius: 20px;
+    }
+    
+    .payment-method-btn {
+      max-width: 250px;
+      min-height: 100px;
+      padding: 25px 15px;
+    }
+    
+    .method-logo {
+      width: 80px;
+      height: 60px;
+    }
+    
+    .truewallet-logo {
+      width: 120px !important;
+      height: 120px !important;
+      max-width: 120px !important;
+      max-height: 120px !important;
+    }
+    
+    .promptpay-logo {
+      width: auto !important;
+      height: auto !important;
+      max-width: 300% !important;
+      max-height: 300% !important;
+    }
+  }
+
   .payment-modal-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    padding: 25px 30px;
-    border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+    padding: 20px 25px;
   }
 
-  .payment-modal-header h3 {
-    margin: -30px;
-    color: #00ffff;
-    font-size: 2rem;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
 
-  .close-btn {
-    background: none;
-    border: none;
-    color: #00ffff;
-    font-size: 1.8rem;
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 50%;
-    transition: all 0.3s ease;
-  }
-
-  .close-btn:hover {
-    background: rgba(0, 255, 255, 0.1);
-    transform: scale(1.1);
-  }
 
   .payment-modal-body {
     padding: 15px 20px;
@@ -2112,79 +2124,74 @@
   }
 
   .payment-methods-grid {
-    display: grid;
-    gap: 8px;
-    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    margin-bottom: 30px;
     flex: 1;
+    align-items: center;
+    justify-content: center;
   }
 
   .payment-method-btn {
     display: flex;
     flex-direction: column;
-    padding: 15px;
-    border: 2px solid rgba(0, 255, 255, 0.3);
-    border-radius: 15px;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 30px;
+    border: 3px solid rgba(0, 255, 255, 0.3);
+    border-radius: 25px;
     background: rgba(0, 255, 255, 0.05);
     cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
-    text-align: left;
+    min-height: 150px;
+    width: 100%;
+    max-width: 350px;
   }
 
   .payment-method-btn:hover {
     border-color: #00ffff;
     background: rgba(0, 255, 255, 0.1);
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 255, 255, 0.2);
   }
 
   .payment-method-btn.selected {
     border-color: #00ffff;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.1) 0%, rgba(0, 255, 255, 0.15) 100%);
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.15) 0%, rgba(0, 255, 255, 0.25) 100%);
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
   }
 
-  .method-header {
+  .method-logo {
+    width: 120px;
+    height: 90px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 8px;
+    justify-content: center;
+    margin-bottom: 15px;
   }
 
-  .method-icon {
-    font-size: 28px;
+  .method-logo img {
+    max-width: 300%;
+    max-height: 300%;
+    object-fit: contain;
   }
 
-  .method-name {
-    font-weight: bold;
-    font-size: 18px;
-    color: #ffffff;
-    flex: 1;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  /* ปรับขนาดเฉพาะ True Wallet */
+  .truewallet-logo {
+    width: 200px !important;
+    height: 200px !important;
+    max-width: 200px !important;
+    max-height: 200px !important;
   }
 
-  .popular-badge {
-    background: linear-gradient(135deg, #ff6b6b, #ff8e53);
-    color: white;
-    padding: 5px 12px;
-    border-radius: 18px;
-    font-size: 13px;
-    font-weight: bold;
-  }
-
-  .method-details {
-    margin-left: 50px;
-  }
-
-  .method-desc {
-    font-size: 16px;
-    color: #cccccc;
-    margin-bottom: 8px;
-    line-height: 1.5;
-  }
-
-  .method-fees {
-    font-size: 15px;
-    color: #00ffff;
-    font-weight: 500;
+  /* กำหนดขนาดปกติสำหรับ PromptPay */
+  .promptpay-logo {
+    width: auto !important;
+    height: auto !important;
+    max-width: 300% !important;
+    max-height: 300% !important;
   }
 
   .selected-indicator {
@@ -2194,6 +2201,13 @@
     color: #00ffff;
     font-size: 24px;
     font-weight: bold;
+    background: rgba(0, 255, 255, 0.2);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .price-breakdown {
@@ -2264,33 +2278,46 @@
 
   .payment-action-buttons {
     display: flex;
-    gap: 12px;
-    flex-direction: column;
+    gap: 15px;
     margin-top: auto;
   }
 
   .confirm-payment-btn {
-    width: 100%;
-    background: linear-gradient(135deg, #00ffff 0%, #0099cc 100%);
-    color: #000000;
-    border: none;
-    border-radius: 15px;
-    padding: 15px;
-    font-size: 16px;
-    font-weight: 700;
+    flex: 1;
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    color: #00ffff;
+    padding: 15px 25px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
     font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    margin-top: auto;
+    position: relative;
+    overflow: hidden;
   }
 
-  .confirm-payment-btn:hover:not(.processing) {
-    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
+  .confirm-payment-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s;
+  }
+
+  .confirm-payment-btn:hover::before {
+    left: 100%;
+  }
+
+  .confirm-payment-btn:hover {
+    background: rgba(0, 255, 255, 0.2);
+    border-color: rgba(0, 255, 255, 0.6);
     transform: translateY(-2px);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
   }
 
   .confirm-payment-btn.processing {
@@ -2299,12 +2326,12 @@
   }
 
   .cancel-payment-btn {
-    width: 100%;
+    flex: 1;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.3);
     color: #ffffff;
-    padding: 15px;
-    font-size: 16px;
+    padding: 15px 25px;
+    font-size: 1.2rem;
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -2313,7 +2340,114 @@
 
   .cancel-payment-btn:hover {
     background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
   }
+
+  /* Success Modal Styles */
+  .success-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10010;
+    backdrop-filter: blur(10px);
+  }
+
+  .success-modal {
+    background: #040319;
+    border: 3px solid #00ff00;
+    border-radius: 25px;
+    width: 400px;
+    max-width: 90vw;
+    position: relative;
+    z-index: 10011;
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+    animation: successModalIn 0.5s ease-out;
+  }
+
+  @keyframes successModalIn {
+    from {
+      opacity: 0;
+      transform: scale(0.8) translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  .success-modal-content {
+    padding: 40px 30px;
+    text-align: center;
+  }
+
+  .success-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    animation: successBounce 1s ease-in-out;
+  }
+
+  @keyframes successBounce {
+    0%, 20%, 50%, 80%, 100% {
+      transform: translateY(0);
+    }
+    40% {
+      transform: translateY(-10px);
+    }
+    60% {
+      transform: translateY(-5px);
+    }
+  }
+
+  .success-modal-content h3 {
+    color: #00ff00;
+    font-size: 1.8rem;
+    font-weight: bold;
+    margin-bottom: 15px;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .success-modal-content p {
+    color: #ffffff;
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+    font-family: 'MiSansThai', sans-serif;
+  }
+
+  .success-details {
+    color: #cccccc;
+    font-size: 1rem;
+    margin-bottom: 25px;
+  }
+
+  .success-close-btn {
+    background: rgba(0, 255, 0, 0.1);
+    border: 2px solid rgba(0, 255, 0, 0.3);
+    color: #00ff00;
+    padding: 15px 30px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .success-close-btn:hover {
+    background: rgba(0, 255, 0, 0.2);
+    border-color: rgba(0, 255, 0, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+  }
+
+
 
   /* Pay Button Styles */
   .pay-button {
@@ -2341,34 +2475,30 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.98);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 10005;
-    backdrop-filter: blur(2px);
-    pointer-events: auto;
-    isolation: isolate;
-    outline: none !important;
-    border: none !important;
-    overflow: visible;
-    border-radius: 40px;
+    backdrop-filter: blur(20px);
+    pointer-events: all;
+    user-select: none;
   }
 
   .payment-page-modal {
     background: #040319;
-    border: 2px solid #00ffff !important;
+    border: 4px solid #00ffff !important;
     border-radius: 35px;
-    width: 440px !important;
-    height: 740px !important;
+    width: 440px;
+    height: 740px;
     overflow-y: auto;
     position: relative;
     z-index: 10006;
-    pointer-events: auto;
-    isolation: isolate;
-    outline: none !important;
-    backdrop-filter: none;
-    user-select: none;
+  }
+
+  /* Override any other CSS */
+  div[class*="payment-page-modal"] {
+    border: 4px solid #00ffff !important;
   }
 
   .payment-page-header {
@@ -2468,7 +2598,7 @@
   }
 
   .promo-title {
-    font-size: 38px;
+    font-size: 32px;
     font-weight: bold;
     color: #ffd700;
     letter-spacing: 1px;

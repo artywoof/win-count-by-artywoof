@@ -1,4 +1,152 @@
 ---
-description: Stack: Tauri, Rust, Svelte, TypeScript, Tailwind CSS, Bun (ไม่แน่ใจว่าดีไหมสำหรับ แอพที่รวดเร็ว เบาเครื่อง ไม่กินทรัพยากรเครื่อง แกะแอพนำไปขายยาก) Win Count (Desktop App) เป็นชื่อของแอพผม โดยเริ่มจากบนลงล่างนะครับ 1. ขนาดของแอพจะเป็นขนาด 496x796 แบบไม่มีหน้าต่าง windows มีแต่ขอบหรือ border rainbow สีสรรค์สวยงามล้อมตัวแอพไว้ 2. มีปุ่ม - (Minimize) กดแล้วย่อเข้า Task Bar (ตอนย่อเข้าอยากได้ลูกเล่นเพิ่มเติม)  3. มีปุ่ม X (Close) กดแล้วย่อเข้า Tray (อยากให้มีลูกเล่นตอนย่อเข้า Tray) ทางเดียวที่จะกดปิดแอพได้คือ ต้องกดคลิกขวาที่ Tray แล้วกดปิด ถ้าจะเปิดก็ให้กดที่ Tray 1 ครั้งกดเปิดแอพได้ ดังนั้นคลิกขวาที่ Tray จะมีแค่เมนู ปิด 4. ชื่อ Preset ที่ผู้ใช้งานกำลังใช้อยู่ สามารถพิมพ์ชื่อได้เลย แล้วบันทึกชื่อ Preset ให้อัตโนมัติ 5. มีกรอบล้อมรอบ ไอคอน มงกุฏ และ กล่องตัวเลขวิน 5.1 มีไอคอนรูป มงกุฏ 5.2 มีกล่องตัวเลขข้างในอยู่ข้างขวาของไอคอน กล่องนี้สามารถตามจำนวนตัวเลขในกล่องมากสูงสุดถึง -10,000 และ 10,000 5.3 ตัวเลข เราจะเรียกกันว่า ตัวเลขวิน ตัวเลขวินจะสามารถกดคีลัด Alt + - เท่ากับ -1 ลงไปเรื่อยๆ Alt + = เท่ากับบวก 1 และ Alt + Shift + - จะเท่ากับลบทีละ -10 และ Alt + Shift + = จะเท่ากับบวกทีละ 10 ทุกครั้งที่กดคีลัดหรือพิมพ์จะมีเสียงออกมาด้วย นอกจากจะกดคีลัดแล้วผู้ใช้สามารถพิมพ์จำนวนตัวเลขสูงสุดที่พิมพ์ได้ -10,000 และ 10,000 ถ้ามากกว่ามันอยากให้มีเอฟเฟคเตือนว่ามันพิมพ์ไม่ได้แล้ว ตัวเลขสามารถติดลบได้เช่น -999 6. เป้าหมาย (GOAL) มีตัวหนังสือเขียนเอาไว้ข้างซ้าย ส่วนใกล้ๆกันจะมีกล่องใส่ตัวเลขเป้าหมาย และ มีตัวเลขเป้าหมาย ผู้ใช้สามารถพิมพ์ได้จำกัดตัวเลขสูงสุดเหมือนตัวเลขวินเลย 7. ทุกครั้งที่ตัวเลขเปลี่ยนฝั่ง Overlay ก็เปลี่ยนตาม ห้ามดีเลย์ ต้อง Real-Time *** ที่สำคัญที่สุดคือบันทึกค่าวินอัตโนมัติเข้า Preset ที่ผู้ใช้ใช้อยู่ปัจจุบัน *** 8. ปุ่ม Preset สามารถกดได้ กดเข้าไปแล้วจะมีเมนู เพิ่ม Preset ด้วย สัญลักษ์รูป + พอกดเข้าไปแล้วจะมีให้ตั้ง ชื่อ และ บันทึก มีไอคอนแก้ไขชื่อ และ ลบ ด้วย สามารถเลือก Preset ทั้งหมดที่สร้าง สามารถสร้างได้สูงสุด 10 Preset ถ้ากดจากเมนูที่เลือก Preset จะเข้ามาที่หน้าหลักทันทีพร้อม ชื่อ ที่เลือกใช้ และ ค่าวินต่างๆ ของ Preset ที่เลือกใช้ 9. กรอบล้อมรอบ คำว่า ไอคอน และ เป้าหมาย 10 มีสวิตที่เอาไว้ซ่อนทั้ง ไอคอน ซ่อนทั้ง เป้าหมาย *** ไม่ใช่ว่ากดซ่อนไอคอนในแอพนะ ซ่อนเฉพาะ Overlay และ ซ่อนเป้าหมาย ไม่ใช่ซ่อนในแอพ ซ่อนเฉพาะ Overlay *** 10. มีปุ่มตั่งค่า ปุ่ม เปลี่ยนคีลัด กดไปแล้วจะเข้าสู่ เมนู ตั้งค่า ให้ผู้ใช้สามารถเปลี่ยนคืลัดเองได้หมด มีให้กดปิดเสียงด้วย และ มีให้อัพโหลดไฟล์เสียงด้วย 11. มีปุ่มคัดลอกลิงก์เพื่อให้ผู้ใช้นำลิงค์ Overlay ไปใส่ใน TikTok LIVE Studio 12. Auto-save ทุกครั้งที่เลขเปลี่ยนเลย   Overlay (ลิงก์เอาไปใส่ใน TikTok LIVE Studio และ ลิงก์ /overlay.html) 1. มีกรอบล้อมรอบ ไอคอน ตัวเลขวิน และเครื่องหมาย /ตามด้วยตัวเลขเป้าหมายวิน 2. ไอคอนมงกุฏ (ถ้ากดซ่อนผ่านแอพไอคอนนี้ก็ต้องหายไป) 3. ตัวเลขวิน อัพเดท ซิงค์ตาม ในแอพเลย 4. /และตัวเลขเป้าหมาย (ถ้ากดซ่อนผ่านแอพ /และเป้าหมายต้องหายไป) 5. Animation สวยๆ ตอนเปลี่ยนตัวเลข มีสีที่แยกระหว่างตัวเลขลบเช่น -10 และเลข 0 และเลขบวก เช่น 10 6. พื้นหลังใส แต่กล่องรวมไม่ใส เพื่อที่จะเอาไปใส่ใน TIKTOK LIVE Studio ให้มันแสดงแต่กล่องรวม ไอคอน ตัวเลขวิน /เลขเป้าหมาย 7. ต้องทำเป็นลิงค์เพื่อนำไปใส่ใน TikTok LIVE Studio เท่านั้น  *** หมายเหตุ *** พอเสร็จแล้วต้องการเอาไปขาย อาจจะทำเป็นไฟล์ที่เอาไว้ติดตั้ง บีบเป็นไฟล์ zip   *** ระวัง *** อยากให้มีการป้องกันคนอื่นที่เอาไฟล์ของแอพเราไปแกะ แล้วเอาไปขายต่อเอง   ชื่อแอพเต็มชื่อ Win Count by ArtYWoof มีไอคอนแอพ มีไอคอน Desktop  ตอนลูกค้าติดตั้งอยากให้เลือกไฟล์ติดตั้งได้ และ ถ้าหากลูกค้าไม่มีโฟลเดอร์ ยกตัวอย่างเช่น C:\ ก็สร้างโฟลเดอร์ให้ลูกค้าเป็น C:\Win Count by ArtYWoof หากเปลี่ยนไป F:\ หรือ D:\ หรือ E:\ ก็จะสร้างโฟลเดอร์ Win Count by ArtYWoof ให้อัตโนมัติ  ผมขอเพิ่มรายเอียดนะครับเผื่อคุณอยากจะปรับ Stack 1. Desktop App ต้องการให้แอพ มีความสวยงามมากที่สุดสามารถใส่ลูกเล่น เอฟเฟค ได้เยอะ สำคัญคือ เร็ว ไว ไม่กินเครื่อง 2. Overlay อยากให้รองรับ การตกแต่งที่สวยงาม เอฟเฟค ลูกเล่น เยอะๆ เพื่อจะรองรับ การเปลี่ยนธีมหรือ การให้ผู้ใช้สามารถปรับแต่งได้เองในอนาคต แต่ใน TikTok Live Studio รองรับแต่เป็นลิงก์ 3. ขอวิธีที่ดีที่สุดแนะนำหน่อย  เพิ่มเติม  ทำให้สามารถ อัพเดท แอพ ให้ลูกค้าได้ อัตโนมัติ มีคำถามอะไรสงสัย ไม่เคลียร์ตรงไหนถามได้เลย หรือ มีไอเดียจะมานำเสนอก็บอกได้เลย
+description: ## Project Overview
+Create a **Win Count by ArtYWoof** desktop application using the following technology stack:
+- **Frontend**: Svelte + TypeScript + Tailwind CSS
+- **Backend**: Tauri + Rust
+- **Package Manager**: Bun
+- **Target**: Lightweight, fast, secure desktop app with anti-reverse engineering protection
+
+## Core App Specifications
+
+### 1. Window Configuration
+- **Size**: 496x796 pixels (fixed)
+- **Style**: Frameless window with rainbow gradient border
+- **No default Windows title bar**
+
+### 2. Title Bar Controls
+- **Minimize Button (-)**: 
+  - Action: Minimize to taskbar
+  - Add smooth animation effect when minimizing
+- **Close Button (X)**:
+  - Action: Minimize to system tray (NOT close app)
+  - Add smooth animation effect when going to tray
+  - App only closes via right-click tray menu → "Exit"
+  - Single left-click on tray icon reopens the app
+
+### 3. Preset Management
+- **Current Preset Name**: Editable text field at top
+- Auto-save preset name when user types
+- **Preset Button**: Opens preset management menu
+  - Add new preset (+) button - max 10 presets
+  - Edit preset names
+  - Delete presets
+  - Switch between presets instantly
+- When switching presets, load all saved values immediately
+
+### 4. Win Counter Section
+- **Crown Icon** + **Win Number Box**
+- **Win Number Range**: -10,000 to +10,000
+- **Keyboard Shortcuts**:
+  - `Alt + -` = Decrease by 1
+  - `Alt + =` = Increase by 1  
+  - `Alt + Shift + -` = Decrease by 10
+  - `Alt + Shift + =` = Increase by 10
+- **Sound Effects**: Play sound on every number change
+- **Manual Input**: Users can type numbers directly
+- **Validation**: Show warning effect if exceeding limits
+- **Negative Numbers**: Support negative values (e.g., -999)
+
+### 5. Goal Section
+- **"GOAL" Label** on left side
+- **Goal Number Input**: Same range as win counter (-10,000 to +10,000)
+- **Real-time Sync**: Changes instantly reflect in overlay
+
+### 6. Visibility Toggles
+- **Hide Crown Toggle**: Hide crown icon in overlay only (not in app)
+- **Hide Goal Toggle**: Hide goal section in overlay only (not in app)
+
+### 7. Settings Menu
+- **Settings Button**: Opens configuration panel
+- **Custom Keyboard Shortcuts**: Allow users to change all hotkeys
+- **Audio Settings**: 
+  - Mute/unmute sounds
+  - Upload custom sound files
+- **Theme Settings**: Prepare for future theme customization
+
+### 8. Overlay Link
+- **Copy Overlay Link Button**: Generate link for TikTok LIVE Studio
+- Link format: `http://localhost:[port]/overlay.html`
+
+### 9. Auto-save System
+- **Real-time Saving**: Save every number change immediately
+- **Persistent Storage**: All data survives app restart
+- **Preset Auto-save**: Current preset saves automatically
+
+## Overlay Specifications (`/overlay.html`)
+
+### Visual Elements
+- **Transparent Background** with **opaque content box**
+- **Crown Icon** (hideable via app settings)
+- **Win Number** with real-time sync
+- **Goal Display**: Format as "/[goal_number]" (hideable via app settings)
+- **Bordered Container** around all elements
+
+### Animations & Effects
+- **Number Change Animation**: Smooth transitions when numbers update
+- **Color Coding**:
+  - Negative numbers: Red theme
+  - Zero: Neutral theme  
+  - Positive numbers: Green theme
+- **Future-ready**: Designed for theme customization and effects
+
+### Technical Requirements
+- **Real-time Sync**: No delay between app and overlay
+- **TikTok LIVE Studio Compatible**: Works as browser source
+- **Responsive Design**: Clean display in streaming software
+
+## Payment & Licensing System
+
+### Subscription Model
+- **Price**: 149 THB per month
+- **Payment Methods**: PromptPay, TrueMoney Wallet, Debit Cards, Credit Cards
+- **License Verification**: App locks until payment verified
+- **Thai Payment Integration**: Focus on local payment solutions
+
+### Anti-Piracy Protection
+- **Code Obfuscation**: Rust compilation + additional protection
+- **License Checking**: Regular online validation
+- **Tamper Detection**: Prevent reverse engineering attempts
+- **Secure Distribution**: GitHub Releases with authentication
+
+## Installation & Distribution
+
+### Installer Features
+- **Custom Installation Path Selection**
+- **Auto-folder Creation**: 
+  - Default: `C:\Win Count by ArtYWoof`
+  - User choice: `D:\Win Count by ArtYWoof`, etc.
+- **Desktop Icon Creation**
+- **Start Menu Integration**
+- **Auto-updater**: GitHub Releases integration
+
+### App Branding
+- **Full Name**: "Win Count by ArtYWoof"
+- **Custom App Icon**: Crown-themed design
+- **Desktop Shortcut Icon**: Matches app branding
+
+## Auto-update System
+- **GitHub Integration**: Check for updates automatically
+- **Background Updates**: Download and install seamlessly
+- **Version Management**: Semantic versioning
+- **Rollback Support**: Fallback to previous version if needed
+
+## Development Priorities
+1. **Performance**: Lightning-fast response times
+2. **Security**: Payment protection + anti-piracy
+3. **User Experience**: Intuitive interface with smooth animations
+4. **Streaming Integration**: Perfect TikTok LIVE Studio compatibility
+5. **Reliability**: Stable operation during long streaming sessions
+
+## Technical Implementation Notes
+- Use Tauri's secure IPC for frontend-backend communication
+- Implement SQLite for local data storage
+- Use Rust's async capabilities for real-time updates
+- Svelte stores for reactive state management
+- Tailwind for responsive, beautiful UI
+- Bun for fast development builds
+
+---
+
+**Priority**: Create a production-ready, commercial-grade streaming tool that TikTok streamers will love to use and pay for monthly.
 alwaysApply: false
 ---
