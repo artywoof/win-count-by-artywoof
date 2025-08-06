@@ -520,7 +520,7 @@
           <!-- หน้าหลัก - เรียบง่าย -->
           <div class="payment-intro">
             <div class="app-title">
-              <h2>PRO</h2>
+              <h2 style="font-size: 3.5rem; font-weight: bold; color: #00ffff; margin: 0;">PRO</h2>
               <p class="tagline">เครื่องมือนับวินสำหรับสตรีมเมอร์ระดับโปร</p>
         </div>
             
@@ -530,7 +530,7 @@
                  <span class="price-period" style="color: #00ffff; font-size: 1.6rem; font-weight: bold;">/เดือน</span>
                </div>
                <div style="margin-top: 8px;">
-                 <span class="price-amount" style="text-decoration: line-through; color: #ffffff; font-size: 1.8rem; opacity: 0.7;">฿249</span>
+                 <span class="price-amount" style="text-decoration: line-through; color: #ffffff; font-size: 1.8rem; opacity: 0.7;">฿199</span>
                  <span class="price-period" style="color: #ffffff; font-size: 1.4rem;">/เดือน</span>
                </div>
       </div>
@@ -539,7 +539,7 @@
             <div class="promotion-banner-compact">
               <div class="promo-content">
                 <span class="promo-title">โปรโมชั่นพิเศษ!</span>
-                <span class="promo-savings">ประหยัด ฿100</span>
+                <span class="promo-savings">ประหยัด ฿50</span>
                 <div class="timer-compact">⏰ หมดเขต: 6 ส.ค. 68</div>
               </div>
             </div>
@@ -766,6 +766,29 @@
                     src={method.logo} 
                     alt="{method.name}" 
                     class="method-logo-img {method.id}-logo"
+                    style={method.id === 'promptpay' ? 'width: 320px !important; height: 320px !important; max-width: 320px !important; max-height: 320px !important;' : (method.id === 'truewallet' ? 'width: 200px !important; height: 200px !important; max-width: 200px !important; max-height: 200px !important;' : '')}
+                    on:load={(e) => {
+                      const img = e.target as HTMLImageElement;
+                      if (img) {
+                        if (method.id === 'promptpay') {
+                          img.style.width = '320px';
+                          img.style.height = '320px';
+                          img.style.maxWidth = '320px';
+                          img.style.maxHeight = '320px';
+                        } else if (method.id === 'truewallet') {
+                          img.style.width = '200px';
+                          img.style.height = '200px';
+                          img.style.maxWidth = '200px';
+                          img.style.maxHeight = '200px';
+                        } else {
+                          // ล้าง style สำหรับ PromptPay
+                          img.style.width = '';
+                          img.style.height = '';
+                          img.style.maxWidth = '';
+                          img.style.maxHeight = '';
+                        }
+                      }
+                    }}
                   />
                 </div>
                 {#if selectedPaymentMethod === method.id}
@@ -799,83 +822,38 @@
       <div class="payment-page-backdrop" on:click={(e) => e.preventDefault()} role="dialog" tabindex="0">
         <div class="payment-page-modal" on:click|stopPropagation role="dialog" style="border: 4px solid #00ffff !important; border-width: 4px !important;">
           <div class="payment-page-header">
-            <button class="back-btn" on:click={goBackToSelection}>← กลับ</button>
-            <h3>{getSelectedMethod()?.name}</h3>
-            <div class="amount-display">฿{calculateFinalAmount()}</div>
           </div>
           
           <div class="payment-page-body">
-            <!-- โปรโมชั่น Banner -->
-            <div class="promotion-banner">
-              <div class="promotion-header">
-                <div class="promotion-icon">🎉</div>
-                <div class="promotion-title">โปรโมชั่นพิเศษ!</div>
-              </div>
-              <div class="promotion-content">
-                <div class="price-comparison">
-                  <div class="original-price">
-                    <span class="price-label">ราคาปกติ:</span>
-                    <span class="price-value">฿199</span>
-                  </div>
-                  <div class="promotion-price">
-                    <span class="price-label">ราคาพิเศษ:</span>
-                    <span class="price-value">฿149</span>
-                  </div>
-                  <div class="discount-badge">ประหยัด ฿50</div>
-                </div>
-                <div class="promotion-timer">
-                  <div class="timer-icon">⏰</div>
-                  <div class="timer-text">หมดเขต: 6 สิงหาคม 2568</div>
-                </div>
-              </div>
-            </div>
-
             {#if selectedPaymentMethod === 'promptpay'}
               <!-- PromptPay Payment Page -->
               <div class="promptpay-section">
-                <div class="payment-info">
-                  <h4>📱 PromptPay QR Code</h4>
-                  <p>สแกน QR Code ผ่านแอป Banking ทุกธนาคาร</p>
-                  <div class="qr-placeholder">
+                <div class="qr-section">
+                  <h3>📱 PromptPay QR Code</h3>
+                  <div class="qr-container">
                     <div class="qr-loading">
                       <div class="spinner"></div>
                       <p>กำลังสร้าง QR Code...</p>
                     </div>
                   </div>
-                </div>
-                
-                <div class="payment-instructions">
-                  <h4>📋 วิธีชำระเงิน:</h4>
-                  <ol>
-                    <li>เปิด Banking App (เช่น SCB, KBank, BBL)</li>
-                    <li>เลือก "สแกน QR Code" หรือ "PromptPay"</li>
-                    <li>สแกน QR Code ข้างบน</li>
-                    <li>ตรวจสอบข้อมูล: จำนวนเงิน ฿{calculateFinalAmount()}</li>
-                    <li>ยืนยันการชำระเงิน</li>
-                  </ol>
+                  <div class="qr-info">
+                    <p class="qr-amount">฿{calculateFinalAmount()}</p>
+                    <p class="qr-instruction">สแกน QR Code ผ่านแอป Banking ทุกธนาคาร</p>
+                  </div>
                 </div>
               </div>
             {:else if selectedPaymentMethod === 'truewallet'}
               <!-- True Wallet Payment Page -->
               <div class="truewallet-section">
-                <div class="payment-info">
-                  <h4>💙 True Wallet</h4>
-                  <p>จ่ายผ่าน True Wallet App</p>
-                  <div class="app-placeholder">
-                    <div class="app-icon">💙</div>
-                    <p>True Wallet App</p>
+                <div class="truewallet-display">
+                  <h3>💙 True Wallet</h3>
+                  <div class="truewallet-container">
+                    <div class="truewallet-icon">💙</div>
+                    <div class="truewallet-info">
+                      <p class="truewallet-amount">฿{calculateFinalAmount()}</p>
+                      <p class="truewallet-instruction">จ่ายผ่าน True Wallet App</p>
+                    </div>
                   </div>
-                </div>
-                
-                <div class="payment-instructions">
-                  <h4>📋 วิธีชำระเงิน:</h4>
-                  <ol>
-                    <li>เปิด True Wallet App</li>
-                    <li>เลือก "จ่ายเงิน" หรือ "Payment"</li>
-                    <li>สแกน QR Code หรือใส่หมายเลขอ้างอิง</li>
-                    <li>ตรวจสอบข้อมูล: จำนวนเงิน ฿{calculateFinalAmount()}</li>
-                    <li>ยืนยันการชำระเงิน</li>
-                  </ol>
                 </div>
               </div>
             {/if}
@@ -890,8 +868,15 @@
                   <div class="spinner-small"></div>
                   กำลังสร้างการชำระเงิน...
                 {:else}
-                  ชำระด้วย {getSelectedMethod()?.name} - ฿{calculateFinalAmount()}
+                  เปย์
                 {/if}
+              </button>
+              
+              <button 
+                class="cancel-payment-btn" 
+                on:click={() => showPaymentPage = false}
+              >
+                ยกเลิก
               </button>
             </div>
           </div>
@@ -945,8 +930,8 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.9);
-    backdrop-filter: blur(10px);
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(5px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2007,30 +1992,31 @@
     position: fixed;
     top: 0;
     left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: transparent;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 10005;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(2px);
-    pointer-events: auto;
-    isolation: isolate;
-    outline: none !important;
-    border: none !important;
-    overflow: visible;
-    border-radius: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10005;
+    padding: 20px;
+    border-radius: 24px;
+    margin: 10px;
+    pointer-events: all;
   }
 
   .payment-modal {
     background: #040319;
-    border: 2px solid #00ffff !important;
+    border: 4px solid #00ffff !important;
     border-radius: 35px;
     width: 440px !important;
     height: 740px !important;
     overflow-y: auto;
-    position: relative;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     z-index: 10004;
     pointer-events: auto;
     isolation: isolate;
@@ -2048,8 +2034,7 @@
     
     .payment-method-btn {
       max-width: 280px;
-      min-height: 120px;
-      padding: 30px 20px;
+      padding: 15px;
     }
     
     .method-logo {
@@ -2067,8 +2052,8 @@
     .promptpay-logo {
       width: auto !important;
       height: auto !important;
-      max-width: 300% !important;
-      max-height: 300% !important;
+      max-width: 240% !important;
+      max-height: 240% !important;
     }
   }
 
@@ -2081,13 +2066,12 @@
     
     .payment-method-btn {
       max-width: 250px;
-      min-height: 100px;
-      padding: 25px 15px;
+      padding: 25px;
     }
     
     .method-logo {
       width: 80px;
-      height: 60px;
+      height: 0px;
     }
     
     .truewallet-logo {
@@ -2098,10 +2082,10 @@
     }
     
     .promptpay-logo {
-      width: auto !important;
-      height: auto !important;
-      max-width: 300% !important;
-      max-height: 300% !important;
+      width: 150px !important;
+      height: 150px !important;
+      max-width: 150px !important;
+      max-height: 150px !important;
     }
   }
 
@@ -2130,7 +2114,8 @@
     margin-bottom: 30px;
     flex: 1;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    padding-top: 20px;
   }
 
   .payment-method-btn {
@@ -2138,16 +2123,16 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px 30px;
+    padding: 60px;
     border: 3px solid rgba(0, 255, 255, 0.3);
     border-radius: 25px;
     background: rgba(0, 255, 255, 0.05);
     cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
-    min-height: 150px;
     width: 100%;
     max-width: 350px;
+    min-height: 200px;
   }
 
   .payment-method-btn:hover {
@@ -2169,7 +2154,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 15px;
+    margin-bottom: 0;
   }
 
   .method-logo img {
@@ -2186,12 +2171,12 @@
     max-height: 200px !important;
   }
 
-  /* กำหนดขนาดปกติสำหรับ PromptPay */
+  /* กำหนดขนาดสำหรับ PromptPay */
   .promptpay-logo {
-    width: auto !important;
-    height: auto !important;
-    max-width: 300% !important;
-    max-height: 300% !important;
+    width: 320px !important;
+    height: 320px !important;
+    max-width: 320px !important;
+    max-height: 320px !important;
   }
 
   .selected-indicator {
@@ -2278,8 +2263,12 @@
 
   .payment-action-buttons {
     display: flex;
-    gap: 15px;
-    margin-top: auto;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 10px;
+    position: relative;
+    background: transparent;
+    padding: 10px 0;
   }
 
   .confirm-payment-btn {
@@ -2287,8 +2276,8 @@
     background: rgba(0, 255, 255, 0.1);
     border: 1px solid rgba(0, 255, 255, 0.3);
     color: #00ffff;
-    padding: 15px 25px;
-    font-size: 1.2rem;
+    padding: 12px 25px;
+    font-size: 1.8rem;
     font-weight: bold;
     border-radius: 12px;
     cursor: pointer;
@@ -2296,6 +2285,7 @@
     font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
     position: relative;
     overflow: hidden;
+    min-width: 120px;
   }
 
   .confirm-payment-btn::before {
@@ -2447,6 +2437,92 @@
     box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
   }
 
+  /* QR Code Section Styles */
+  .qr-section {
+    text-align: center;
+    padding: 0px;
+  }
+
+  .qr-section h3 {
+    color: #00ffff;
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .qr-container {
+    width: 250px;
+    height: 250px;
+    margin: 0 auto 10px;
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .qr-info {
+    text-align: center;
+  }
+
+  .qr-amount {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #00ffff;
+    margin-bottom: 10px;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .qr-instruction {
+    color: #cccccc;
+    font-size: 1.1rem;
+    font-family: 'MiSansThai', sans-serif;
+  }
+
+  /* True Wallet Section Styles */
+  .truewallet-display {
+    text-align: center;
+    padding: 60px;
+  }
+
+  .truewallet-display h3 {
+    color: #ff6b6b;
+    font-size: 1.8rem;
+    margin-bottom: 0px;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .truewallet-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0px;
+  }
+
+  .truewallet-icon {
+    font-size: 4rem;
+    margin-bottom: 10px;
+  }
+
+  .truewallet-info {
+    text-align: center;
+  }
+
+  .truewallet-amount {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #ff6b6b;
+    margin-bottom: 10px;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+  }
+
+  .truewallet-instruction {
+    color: #cccccc;
+    font-size: 1.1rem;
+    font-family: 'MiSansThai', sans-serif;
+  }
+
 
 
   /* Pay Button Styles */
@@ -2473,16 +2549,18 @@
     position: fixed;
     top: 0;
     left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.98);
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(2px);
     display: flex;
-    justify-content: center;
     align-items: center;
-    z-index: 10005;
-    backdrop-filter: blur(20px);
+    justify-content: center;
+    z-index: 10007;
+    padding: 20px;
+    border-radius: 24px;
+    margin: 10px;
     pointer-events: all;
-    user-select: none;
   }
 
   .payment-page-modal {
@@ -2492,8 +2570,11 @@
     width: 440px;
     height: 740px;
     overflow-y: auto;
-    position: relative;
-    z-index: 10006;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10008;
   }
 
   /* Override any other CSS */
@@ -2503,25 +2584,35 @@
 
   .payment-page-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
-    padding: 25px 30px;
-    border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+    padding: 15px 25px;
+    padding-bottom: 10px;
   }
 
-  .back-btn {
-    background: none;
-    border: none;
-    color: #00ffff;
-    font-size: 1.2rem;
+  .cancel-payment-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    padding: 12px 25px;
+    font-size: 1.8rem;
+    font-weight: bold;
+    border-radius: 12px;
     cursor: pointer;
-    padding: 8px;
-    border-radius: 15px;
     transition: all 0.3s ease;
+    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+    min-width: 120px;
+  }
+
+  .cancel-payment-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
   }
 
   .back-btn:hover {
     background: rgba(0, 255, 255, 0.1);
+    transform: scale(1.1);
   }
 
   .payment-page-header h3 {
@@ -2540,11 +2631,14 @@
 
   .payment-page-body {
     padding: 20px 25px;
-    height: calc(100% - 80px);
+    height: calc(100% - 50px);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 15px;
+    justify-content: center;
+    align-items: center;
+    padding-top: 0;
   }
 
   /* โปรโมชั่น Banner - Compact */
