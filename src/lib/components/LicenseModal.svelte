@@ -1,380 +1,46 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import licenseManager from '$lib/licenseManager';
-
-  export interface PaymentInfo {
-    qr_code_url: string;
-    qr_code_data: string;
-    qr_code_fallbacks: string[];
-    amount: number;
-    payment_reference: string;
-    expires_at: string;
-  }
+  import { writable } from 'svelte/store';
 
   export let isOpen: boolean = false;
   export let onLicenseValid: () => void = () => {};
 
-  let paymentInfo: PaymentInfo | null = null;
-  let isLoading = false;
-  let errorMessage = '';
-  let successMessage = '';
-  let paymentStatus: 'idle' | 'creating' | 'waiting' | 'completed' | 'failed' = 'idle';
-  let timeRemaining = 900; // 15 นาที
-  let showQRCode = false;
-  let showVipModal = false;
-  let vipLicenseKey = '';
+  // --- 🔥 State หลักสำหรับ Quest Log ของเรา! ---
+  const modalStep = writable(0); // 0: Main, 1: QR, 2: MachineID, 3: Enter Key
 
-  let countdownInterval: number | null = null;
-  
-  // QR Code fallback system
-  let qrImageLoaded = false;
-  let qrImageError = false;
-  let currentQRIndex = 0;
-  
-  // Input validation state
+  // --- State สำหรับแต่ละขั้นตอน ---
+  let vipLicenseKey = '';
   let inputError = '';
   let inputSuccess = '';
-  let isInputValid = false;
+  let machineIdForDisplay = 'กำลังโหลด...';
+  let machineIdCopied = false;
 
-  // Payment state - simplified to PromptPay only
-  let isProcessingPayment = false;
-  let omisePaymentData: any = null;
-  let showSuccessModal = false; // หน้าต่างแจ้งเตือนสำเร็จ
-
-
-
-  // PromptPay payment function
-  async function createPromptPayPayment() {
-    try {
-      isProcessingPayment = true;
-      
-      // สร้าง Payment Reference ที่ไม่ซ้ำ (ง่ายมากๆ!)
-      const timestamp = Date.now();
-      const randomNum = Math.floor(Math.random() * 10000);
-      const paymentRef = `PP${timestamp}${randomNum.toString().padStart(4, '0')}`;
-      
-      console.log('🎯 Creating PromptPay with promptpay.io API');
-      console.log('   📞 Phone: 090-978-3454');
-      console.log('   💰 Amount: ฿149');
-      console.log('   🔗 Payment Ref:', paymentRef);
-      
-      // สร้าง QR Code URL จาก promptpay.io (ไม่ซ้ำ 100%!)
-      const qrCodeUrl = `https://promptpay.io/0909783454/149.png?t=${timestamp}`;
-      
-      // บันทึกข้อมูล payment
-      omisePaymentData = {
-        qr_code_data: qrCodeUrl,           // ใช้ URL ตรงๆ แทน base64!
-        payment_reference: paymentRef,     // Reference สำหรับ tracking
-        amount: 149,                       // จำนวนเงิน
-        phone_number: "090-978-3454"       // เบอร์ PromptPay
-      };
-      
-      showQRCode = true;
-      startCountdown();
-      startPromptPayStatusCheck();
-      
-      console.log('✅ PromptPay QR created successfully with promptpay.io!');
-      console.log('🔗 QR URL:', qrCodeUrl);
-      
-    } catch (error) {
-      console.error('❌ PromptPay payment error:', error);
-      errorMessage = 'ไม่สามารถสร้าง QR Code ได้';
-    } finally {
-      isProcessingPayment = false;
-    }
+  // --- 🔥 ฟังก์ชันควบคุม Quest Log ---
+  function goToQrStep() {
+    $modalStep = 1;
   }
 
+  function goToMachineIdStep() {
+    $modalStep = 2;
+    fetchMachineId(); // ดึง Machine ID เมื่อมาถึงหน้านี้
+  }
 
-
-  // PromptPay Status Check
-  async function startPromptPayStatusCheck() {
-    if (!omisePaymentData) return;
-
-    const checkStatus = async () => {
-      try {
-        // ในโค้ดจริง: ตรงนี้จะเช็คจาก Webhook หรือ Database
-        // สำหรับตอนนี้: จำลองการตรวจสอบ (0% chance success - ต้องจ่ายจริง)
-        const isPaymentCompleted = false; // 0% chance - ต้องจ่ายจริง
-        
-        if (isPaymentCompleted) {
-          console.log('🎉 Payment completed (simulated)!');
-          
-          // สร้าง License Key
-          const licenseKey = generateLicenseKey();
-          
-          // บันทึก License Key
-          await invoke('save_license_key', { key: licenseKey });
-          
-          // ปิดหน้าต่าง QR Code
-          showQRCode = false;
-          
-          // แสดงหน้าต่างสำเร็จ
-          showSuccessModal = true;
-          
-          return true; // หยุดการเช็ค
-        } else {
-          console.log('⏳ Payment still pending...');
-          return false; // เช็คต่อ
-        }
-      } catch (error) {
-        console.error('❌ Status check error:', error);
-        return false; // เช็คต่อ
-      }
-    };
-
-    // เช็คทุก 3 วินาทีเป็นเวลา 15 นาที
-    const interval = setInterval(async () => {
-      const shouldStop = await checkStatus();
-      if (shouldStop) {
-        clearInterval(interval);
-      }
-    }, 3000);
-
-    // หยุดเช็คหลัง 15 นาที
+     function goToVipPremiumStep() {
+     $modalStep = 4; // หน้า VIP Premium Popup
+     // Focus ที่ input ทันที
     setTimeout(() => {
-      clearInterval(interval);
-      console.log('⏰ Payment check timeout');
-    }, 900000);
-  }
+       const input = document.querySelector('.vip-popup-input') as HTMLInputElement;
+       if (input) {
+         input.focus();
+         input.select();
+       }
+     }, 100);
+   }
 
-  // Helper function สำหรับสร้าง License Key
-  function generateLicenseKey() {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let key = "MONTH-";
-    
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 4; j++) {
-        key += chars[Math.floor(Math.random() * chars.length)];
-      }
-      if (i < 2) key += "-";
-    }
-    
-    return key;
-  }
-
-
-
-  // Enhanced startPurchase function สำหรับ Omise
-  async function startOmisePurchase() {
-    isProcessingPayment = true;
-
-    try {
-      const machineId = await invoke('get_machine_id');
-      
-      console.log(`🔄 Starting Omise ${selectedPaymentMethod} payment...`);
-      
-      const response = await fetch('https://win-count-by-artywoof-5np9kh6ry-artywoofs-projects.vercel.app/api/create-omise-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          machine_id: machineId,
-          customer_email: 'customer@example.com',
-          payment_method: selectedPaymentMethod
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Omise API error: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        omisePaymentData = result;
-        showQRCode = true;
-        
-        // Handle different payment methods
-        if (selectedPaymentMethod === 'truewallet' && result.deep_link) {
-          // เปิด True Wallet App
-          window.open(result.deep_link, '_blank');
-        } else if (selectedPaymentMethod === 'card' && result.card_form_url) {
-          // เปิดหน้าฟอร์มบัตรเครดิต
-          window.open(result.card_form_url, '_blank');
-        } else if (selectedPaymentMethod === 'rabbit_linepay' && result.linepay_url) {
-          // เปิด LINE Pay
-          window.open(result.linepay_url, '_blank');
-        }
-        
-        startCountdown();
-        startOmisePaymentStatusCheck();
-        
-      } else {
-        throw new Error(result.message || 'Omise payment creation failed');
-      }
-
-          } catch (error) {
-        console.error('❌ Omise payment error:', error);
-        alert(`เกิดข้อผิดพลาดในการชำระเงิน: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-      isProcessingPayment = false;
-    }
-  }
-
-  // Omise Payment Status Check
-  async function startOmisePaymentStatusCheck() {
-    if (!omisePaymentData) return;
-
-    const checkStatus = async () => {
-      try {
-        const response = await fetch('https://win-count-by-artywoof-5np9kh6ry-artywoofs-projects.vercel.app/api/check-payment-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            charge_id: omisePaymentData.charge_id,
-            payment_reference: omisePaymentData.payment_reference
-          })
-        });
-
-        const status = await response.json();
-
-        if (status.success && status.payment_status === 'COMPLETED') {
-          console.log('🎉 Omise payment successful!');
-          
-          // บันทึก License Key
-          await invoke('save_license_key', { key: omisePaymentData.license_key });
-          
-          // ปิดหน้าต่างจ่ายเงินทันที
-          showPaymentPage = false;
-          showPaymentSelection = false;
-          
-          // แสดงหน้าต่างแจ้งเตือนสำเร็จ
-          showSuccessModal = true;
-          
-          return true; // Stop checking
-        } else if (status.payment_status === 'FAILED') {
-          console.log('❌ Omise payment failed');
-          alert('การชำระเงินล้มเหลว กรุณาลองใหม่อีกครั้ง');
-          showQRCode = false;
-          return true; // Stop checking
-        }
-
-        return false; // Continue checking
-      } catch (error) {
-        console.error('❌ Status check error:', error);
-        return false; // Continue checking
-      }
-    };
-
-    // Check every 3 seconds for 15 minutes
-    const maxChecks = 300; // 15 minutes * 60 seconds / 3 seconds
-    let checkCount = 0;
-
-    const statusInterval = setInterval(async () => {
-      checkCount++;
-      
-      const shouldStop = await checkStatus();
-      
-      if (shouldStop || checkCount >= maxChecks) {
-        clearInterval(statusInterval);
-        
-        if (checkCount >= maxChecks) {
-          console.log('⏰ Payment status check timeout');
-          alert('หมดเวลาการตรวจสอบการชำระเงิน กรุณาติดต่อฝ่ายสนับสนุน');
-        }
-      }
-    }, 3000);
-  }
-
-  function validateEmail(email: string) {
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email);
-  }
-
-  onMount(() => {
-    // ฟัง events จาก license manager
-    window.addEventListener('license-activated', handleLicenseActivated);
-    window.addEventListener('payment-failed', handlePaymentFailed);
-  });
-
-  onDestroy(() => {
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-    }
-    window.removeEventListener('license-activated', handleLicenseActivated);
-    window.removeEventListener('payment-failed', handlePaymentFailed);
-  });
-
-  async function createPayment() {
-    try {
-      isLoading = true;
-      errorMessage = '';
-      paymentStatus = 'creating';
-      qrImageLoaded = false;
-      qrImageError = false;
-      currentQRIndex = 0;
-      
-      // ดึง Machine ID
-      const machineId = await invoke('get_machine_id');
-      
-      // สร้าง Purchase Request
-      const response = await fetch('https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api/create-purchase', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          machine_id: machineId,
-          customer_email: 'customer@example.com'
-        })
-      });
-
-      console.log('📡 Response status:', response.status);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const result = await response.json();
-      console.log('📡 Response data:', result);
-      
-      if (result.success) {
-        paymentInfo = {
-          qr_code_url: result.qr_code_data,
-          qr_code_data: result.qr_code_data,
-          qr_code_fallbacks: result.qr_code_fallbacks || [],
-          amount: result.amount,
-          payment_reference: result.payment_ref,
-          expires_at: result.expires_at
-        };
-      
-        paymentStatus = 'waiting';
-        showQRCode = true;
-        
-        // เริ่ม countdown
-        startCountdown();
-        
-        console.log('✅ QR Code generated successfully');
-      } else {
-        throw new Error(result.message || 'Failed to create payment');
-      }
-
-    } catch (error: unknown) {
-      console.error('❌ Create payment failed:', error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('fetch')) {
-          errorMessage = 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต';
-        } else if (error.message.includes('HTTP')) {
-          errorMessage = 'เกิดข้อผิดพลาดของเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง';
-        } else {
-          errorMessage = `เกิดข้อผิดพลาด: ${error.message}`;
-        }
-      } else {
-        errorMessage = 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
-      }
-      
-      paymentStatus = 'failed';
-    } finally {
-      isLoading = false;
-    }
-  }
-
-  // ฟังก์ชันเปิด VIP Modal
-  function openVipModal() {
-    showVipModal = true;
-    // Focus ที่ input และเลือกข้อความทั้งหมด
+  function goToLicenseKeyStep() {
+    $modalStep = 3;
+    // Focus ที่ input ทันที
     setTimeout(() => {
       const input = document.querySelector('.vip-input') as HTMLInputElement;
       if (input) {
@@ -384,49 +50,67 @@
     }, 100);
   }
 
-  // ฟังก์ชันปิด VIP Modal
-  function closeVipModal() {
-    showVipModal = false;
-    vipLicenseKey = '';
+  function goBackToStep(step: number) {
+    $modalStep = step;
+  }
+  
+  // ฟังก์ชันที่ถูกเรียกเมื่อ Modal ถูกปิด
+  function closeModal() {
+      isOpen = false;
+      // รอให้ animation ปิดจบ ค่อย reset state
+      setTimeout(() => {
+          $modalStep = 0;
+          vipLicenseKey = '';
+          inputError = '';
+          inputSuccess = '';
+      }, 300);
   }
 
-  // ฟังก์ชันแสดงข้อความใน input
+
+  // --- ฟังก์ชัน Helper (เหมือนเดิม) ---
+  async function fetchMachineId() {
+    try {
+      const id = await invoke('get_machine_id');
+      machineIdForDisplay = id as string;
+    } catch (e) {
+      machineIdForDisplay = 'เกิดข้อผิดพลาด';
+      console.error("Failed to get machine ID", e);
+    }
+  }
+
+  function copyMachineId() {
+    if (machineIdForDisplay && !machineIdForDisplay.includes('...')) {
+      navigator.clipboard.writeText(machineIdForDisplay).then(() => {
+        machineIdCopied = true;
+        setTimeout(() => (machineIdCopied = false), 2000);
+      });
+    }
+  }
+  
   function showInputMessage(message: string, type: 'success' | 'error' = 'error') {
     if (type === 'success') {
       inputSuccess = message;
       inputError = '';
-      isInputValid = true;
     } else {
       inputError = message;
       inputSuccess = '';
-      isInputValid = false;
     }
     
-    // ล้างข้อความหลังจาก 3 วินาที
     setTimeout(() => {
-      if (type === 'success') {
         inputSuccess = '';
-      } else {
         inputError = '';
-      }
     }, 3000);
   }
 
-  // ฟังก์ชันตรวจสอบ VIP License
   async function validateVipLicense() {
     if (!vipLicenseKey.trim()) {
       showInputMessage('กรุณากรอก License Key', 'error');
       return;
     }
-
     try {
-      console.log('🔑 ตรวจสอบ VIP License:', vipLicenseKey);
-      
-      // ดึง Machine ID
       const machineId = await invoke('get_machine_id');
-      
-      // ส่ง request ไปยัง API
-      const response = await fetch('https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api/verify-license', {
+      // ใช้ URL จาก Vercel ของอาร์ต (อย่าลืมเปลี่ยนถ้า URL ไม่ถูกต้อง)
+      const response = await fetch('https://win-count-by-artywoof.vercel.app/api/verify-license', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -438,143 +122,28 @@
       const result = await response.json();
       
       if (result.success) {
-        // บันทึก License Key
         await invoke('save_license_key', { key: vipLicenseKey.trim() });
-        
-        // แสดงข้อความสำเร็จ
-        showInputMessage('🎉 License Key ถูกต้อง! ยินดีต้อนรับสู่ Win Count Pro', 'success');
-        
-        // ปิด Modal และรีเฟรช
+        showInputMessage('🎉 License Key ถูกต้อง! ยินดีต้อนรับ!', 'success');
         setTimeout(() => {
-          closeVipModal();
+          closeModal();
           onLicenseValid();
         }, 1500);
-        
       } else {
-        showInputMessage('❌ License Key ไม่ถูกต้อง: ' + result.message, 'error');
+        showInputMessage('❌ ' + result.message, 'error');
       }
     } catch (error) {
       console.error('❌ License validation failed:', error);
-      showInputMessage('License Key ไม่ถูกต้อง โปรดตรวจสอบอีกครั้ง', 'error');
+      showInputMessage('การเชื่อมต่อล้มเหลว โปรดลองอีกครั้ง', 'error');
     }
-  }
-
-  function startCountdown() {
-    timeRemaining = 900; // 15 นาที
-    
-    countdownInterval = setInterval(() => {
-      timeRemaining--;
-      
-      if (timeRemaining <= 0) {
-        if (countdownInterval) {
-          clearInterval(countdownInterval);
-        }
-        paymentStatus = 'failed';
-        errorMessage = 'QR Code หมดอายุแล้ว กรุณาสร้างใหม่';
-      }
-    }, 1000);
-  }
-
-  function handleLicenseActivated() {
-    paymentStatus = 'completed';
-            successMessage = 'ขอบคุณที่อุดหนุนค้าบ 😊';
-    
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-    }
-    
-    // ปิด modal หลังจาก 2 วินาที
-    setTimeout(() => {
-      onLicenseValid();
-    }, 2000);
-  }
-
-  function handlePaymentFailed() {
-    paymentStatus = 'failed';
-    errorMessage = '❌ การชำระเงินล้มเหลวหรือหมดอายุ';
-    
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-    }
-  }
-
-  function closeModal() {
-    // ป้องกันการปิด modal โดยไม่ตั้งใจ
-    if (paymentStatus === 'waiting' || paymentStatus === 'creating') {
-      return;
-    }
-    
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-    }
-    isOpen = false;
-    paymentStatus = 'idle';
-    paymentInfo = null;
-    errorMessage = '';
-    successMessage = '';
-    timeRemaining = 900;
-    showQRCode = false;
-    
-    // ไม่เรียก onLicenseValid() เมื่อปิด modal (ให้ผู้ใช้ซื้อ License จริงๆ)
-    // onLicenseValid();
-  }
-
-  function formatTime(seconds: number): string {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-  }
-
-  function getStatusColor(): string {
-    switch (paymentStatus) {
-      case 'creating': return 'text-blue-500';
-      case 'waiting': return 'text-yellow-500';
-      case 'completed': return 'text-green-500';
-      case 'failed': return 'text-red-500';
-      default: return 'text-gray-500';
-    }
-  }
-
-  function getStatusIcon(): string {
-    switch (paymentStatus) {
-      case 'creating': return '🔄';
-      case 'waiting': return '⏳';
-      case 'completed': return '✅';
-      case 'failed': return '❌';
-      default: return '💳';
-    }
-  }
-
-  // ฟังก์ชันสำหรับ fallback QR Code
-  function handleQRImageError() {
-    console.log('❌ QR Image failed to load, trying fallback...');
-    qrImageError = true;
-    
-    if (paymentInfo?.qr_code_fallbacks && currentQRIndex < paymentInfo.qr_code_fallbacks.length - 1) {
-      currentQRIndex++;
-      paymentInfo.qr_code_data = paymentInfo.qr_code_fallbacks[currentQRIndex];
-      qrImageError = false;
-      console.log(`🔄 Trying fallback QR service ${currentQRIndex + 1}`);
-    } else {
-      console.log('❌ All QR services failed');
-      errorMessage = 'ไม่สามารถโหลด QR Code ได้ กรุณาลองใหม่';
-    }
-  }
-
-  function handleQRImageLoad() {
-    console.log('✅ QR Image loaded successfully');
-    qrImageLoaded = true;
-    qrImageError = false;
   }
 </script>
 
 {#if isOpen}
-  <div class="modal-backdrop" on:click={(e) => e.preventDefault()} on:keydown={(e) => e.key === 'Escape' && closeModal()} role="dialog" tabindex="0">
-    <div class="modal-overlay" on:click|stopPropagation role="presentation"></div>
-    <div class="modal license-modal" on:click|stopPropagation on:mousedown|stopPropagation on:mouseup|stopPropagation role="dialog" aria-labelledby="license-modal-title" tabindex="0" on:focus|preventDefault on:blur|preventDefault>
+    <div class="modal-backdrop" on:click={$modalStep === 4 ? () => {} : closeModal} on:keydown={(e) => e.key === 'Escape' && ($modalStep === 4 ? goBackToStep(0) : closeModal())} role="dialog" tabindex="0">
+      <div class="modal license-modal" on:click={$modalStep === 4 ? (e) => e.stopPropagation() : (e) => e.stopPropagation()} role="dialog" aria-labelledby="license-modal-title">
       <div class="modal-body">
-        {#if paymentStatus === 'idle'}
-          <!-- หน้าหลัก - เรียบง่าย -->
+
+        {#if $modalStep === 0}
           <div class="payment-intro">
             <div class="app-title">
               <h2 style="font-size: 3.5rem; font-weight: bold; color: #00ffff; margin: 0;">PRO</h2>
@@ -592,12 +161,11 @@
                </div>
       </div>
 
-            <!-- โปรโมชั่น Banner - Compact -->
             <div class="promotion-banner-compact">
               <div class="promo-content">
                 <span class="promo-title">โปรโมชั่นพิเศษ!</span>
                 <span class="promo-savings">ประหยัด ฿50</span>
-                <div class="timer-compact">⏰ หมดเขต: 6 ส.ค. 68</div>
+                <div class="timer-compact">⏰ หมดเขต: {new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toLocaleDateString('th-TH')}</div>
               </div>
             </div>
             
@@ -611,163 +179,63 @@
                 </a>
               </div>
             </div>
-            
-
            
             <div class="button-container">
-              <button 
-                class="buy-button" 
-                on:click={createPromptPayPayment}
-                disabled={isProcessingPayment}
-              >
-                {#if isProcessingPayment}
-                  กำลังสร้าง QR Code...
-                {:else}
-                  เปย์
-                {/if}
+              <button class="buy-button" on:click={goToQrStep}>
+                 เปย์
               </button>
-              
-              <button 
-                class="vip-button-floating" 
-                on:click={openVipModal}
-              >
+                             <button class="vip-button-floating" on:click={goToVipPremiumStep}>
                 <div class="vip-text-vertical">VIP</div>
               </button>
-              
-              <!-- Test License Button for Development -->
-              <button 
-                class="test-license-btn" 
-                on:click={() => { 
-                  window.dispatchEvent(new CustomEvent('license-activated'));
-                }}
-                title="สำหรับ Developer เท่านั้น"
-              >
-                🧪 ทดสอบ License
-              </button>
             </div>
           </div>
-        {:else if paymentStatus === 'creating'}
-          <!-- กำลังสร้าง QR Code -->
-          <div class="loading-section">
-            <div class="spinner"></div>
-            <p>🔄 กำลังสร้าง QR Code...</p>
+        {/if}
+
+        {#if $modalStep === 1}
+          <div class="quest-step-container">
+            <button class="back-button" on:click={() => goBackToStep(0)}>← กลับ</button>
+            <h3>ขั้นตอนที่ 1: ชำระเงิน</h3>
+                         <p class="step-instruction">สแกน QR Code ด้านล่างเพื่อชำระเงิน อย่าลืม **เก็บสลิป** ไว้ด้วยนะครับ</p>
+                                    <div class="qr-image-container">
+              <img src="/assets/logo/promptpay.png" alt="PromptPay Logo" class="promptpay-logo" />
+              <img src="https://promptpay.io/0909783454/149.png" alt="PromptPay QR Code" class="qr-image-style" />
+              <div class="qr-footer">
+                090-978-3454 | ฿149
           </div>
-        {:else if paymentStatus === 'waiting' && paymentInfo}
-          <!-- แสดง QR Code -->
-          <div class="qr-section">
-            <div class="qr-container">
-              {#if paymentInfo.qr_code_data && !qrImageError}
-                <img 
-                  src={paymentInfo.qr_code_data} 
-                  alt="PromptPay QR Code"
-                  class="qr-code {qrImageLoaded ? 'loaded' : 'loading'}"
-                  on:load={handleQRImageLoad}
-                  on:error={handleQRImageError}
-                />
-                {#if !qrImageLoaded}
-                  <div class="qr-loading-overlay">
-                    <div class="spinner-small"></div>
-                    <p>กำลังโหลด QR Code...</p>
   </div>
-                {/if}
-              {:else if qrImageError}
-                <div class="qr-error">
-                  <p>❌ ไม่สามารถโหลด QR Code ได้</p>
-                  <button class="retry-qr-btn" on:click={() => {
-                    currentQRIndex = 0;
-                    qrImageError = false;
-                    if (paymentInfo?.qr_code_fallbacks?.[0]) {
-                      paymentInfo.qr_code_data = paymentInfo.qr_code_fallbacks[0];
-                    }
-                  }}>
-                    🔄 ลองใหม่
+            <button class="next-step-button" on:click={() => {
+              window.open('https://discord.gg/eQT7DyxAG6', '_blank');
+              goToMachineIdStep();
+            }}>
+              ส่งหลักฐาน & ไปที่ Discord 🚀
                   </button>
                 </div>
-              {:else}
-                <div class="qr-loading">
-                  <div class="spinner"></div>
-                  <p>กำลังสร้าง QR Code...</p>
-                </div>
               {/if}
+       
+        {#if $modalStep === 2}
+          <div class="quest-step-container">
+            <button class="back-button" on:click={() => goBackToStep(1)}>← กลับ</button>
+            <h3>ขั้นตอนที่ 2: ส่งข้อมูล</h3>
+            <p class="step-instruction">คัดลอก "Machine ID" ด้านล่างนี้ แล้วส่งไปที่ DM ของ ArtYWoof ใน Discord พร้อมกับสลิปที่เก็บไว้</p>
+            <div class="machine-id-display quest-machine-id">
+              <div class="machine-id-box">
+                <span>{machineIdForDisplay}</span>
+                <button on:click={copyMachineId} title="คัดลอก">
+                  {#if machineIdCopied}✅{:else}📋{/if}
+                </button>
             </div>
-            
-            <div class="payment-info">
-              <p class="amount">฿149</p>
-              <p class="reference">Ref: {paymentInfo.payment_reference}</p>
-              <p class="timer {getStatusColor()}">
-                {getStatusIcon()} เหลือเวลา: {formatTime(timeRemaining)}
-              </p>
-            </div>
-            
-                         <div class="payment-instructions">
-               <h4>📱 วิธีชำระเงิน:</h4>
-               <ol>
-                 <li>เปิด Banking App (เช่น SCB, KBank, BBL)</li>
-                 <li>เลือก "สแกน QR Code" หรือ "PromptPay"</li>
-                 <li>สแกน QR Code ข้างบน (หากสแกนไม่ได้ ให้ลองขยายหน้าจอหรือนำโทรศัพท์เข้าใกล้)</li>
-                 <li>ตรวจสอบข้อมูล: จำนวนเงิน ฿149 และหมายเลขอ้างอิง</li>
-                 <li>ยืนยันการชำระเงิน</li>
-                 <li>รอสักครู่ License จะเปิดใช้งานอัตโนมัติ</li>
-               </ol>
-               <div class="qr-tips">
-                 <p><strong>💡 เคล็ดลับ:</strong></p>
-                 <ul>
-                   <li>หากสแกนไม่ได้ ลองขยายหน้าจอหรือปรับความสว่าง</li>
-                   <li>QR Code นี้เป็น PromptPay ที่รองรับทุกธนาคาร</li>
-                   <li>หากมีปัญหา ให้ลองกดปุ่ม "ลองใหม่" ด้านล่าง</li>
-                 </ul>
                </div>
-             </div>
-          </div>
-        {:else if paymentStatus === 'completed'}
-          <!-- ชำระเงินสำเร็จ -->
-          <div class="success-section">
-            <div class="success-icon">🎉</div>
-            <h3>ขอบคุณที่อุดหนุนค้าบ 😊</h3>
-            <p>License ของคุณถูกเปิดใช้งานแล้ว</p>
-            <p class="expires-info">
-              หมดอายุ: {paymentInfo ? new Date(paymentInfo.expires_at).toLocaleDateString('th-TH') : ''}
-            </p>
-          </div>
-        {:else if paymentStatus === 'failed'}
-          <!-- ชำระเงินล้มเหลว -->
-          <div class="error-section">
-            <div class="error-icon">❌</div>
-            <h3>การชำระเงินล้มเหลว</h3>
-            <p>{errorMessage}</p>
-            <button class="retry-button" on:click={createPayment}>
-              🔄 ลองใหม่
+            <button class="next-step-button" on:click={goToLicenseKeyStep}>
+              ได้รับ Key แล้ว (ขั้นตอนสุดท้าย) →
             </button>
           </div>
         {/if}
         
-        {#if errorMessage}
-          <div class="error-message">
-            {errorMessage}
-          </div>
-        {/if}
-        
-        {#if successMessage}
-          <div class="success-message">
-            {successMessage}
-          </div>
-        {/if}
-      </div>
-      
-      <!-- ไม่มีปุ่มปิดเพื่อป้องกันการปิดโดยไม่ตั้งใจ -->
-    </div>
-  </div>
-
-  <!-- VIP Modal -->
-  {#if showVipModal}
-    <div class="vip-modal-backdrop" on:click={closeVipModal} on:keydown={(e) => e.key === 'Escape' && closeVipModal()} role="dialog" tabindex="0">
-      <div class="vip-modal" on:click|stopPropagation role="dialog">
-        <div class="vip-modal-header">
-          <h3>🔑 VIP License</h3>
-        </div>
-        
-        <div class="vip-modal-body">
-          <p>กรุณากรอก License Key ของคุณ:</p>
+        {#if $modalStep === 3}
+          <div class="quest-step-container">
+             <button class="back-button" on:click={() => goBackToStep(2)}>← กลับ</button>
+                         <h3>ขั้นตอนสุดท้าย</h3>
+            <p class="step-instruction">นำ License Key ที่ได้รับจาก ArtYWoof มากรอกในช่องด้านล่างเพื่อเปิดใช้งาน PRO</p>
           <div class="input-container">
             <input 
               type="text" 
@@ -775,262 +243,59 @@
               placeholder="ใส่ License Key ที่นี่..."
               class="vip-input {inputError ? 'error' : ''} {inputSuccess ? 'success' : ''}"
               on:keydown={(e) => e.key === 'Enter' && validateVipLicense()}
-              on:focus={(e) => {
-                const target = e.target as HTMLInputElement;
-                if (target) target.placeholder = '';
-              }}
-              on:blur={(e) => {
-                const target = e.target as HTMLInputElement;
-                if (target) target.placeholder = 'ใส่ License Key ที่นี่...';
-              }}
             />
             {#if inputError}
-              <div class="input-error">
-                ❌ {inputError}
-              </div>
+                <div class="input-error">{inputError}</div>
             {/if}
             {#if inputSuccess}
-              <div class="input-success">
-                ✅ {inputSuccess}
-              </div>
+                <div class="input-success">{inputSuccess}</div>
             {/if}
           </div>
-          
           <div class="vip-button-group">
             <button class="vip-validate-btn" on:click={validateVipLicense}>
-              ตรวจสอบ
+                ตรวจสอบ Key
             </button>
-            <button class="vip-cancel-btn" on:click={closeVipModal}>
-              ยกเลิก
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   {/if}
 
-  <!-- PromptPay QR Code Display -->
-  {#if showQRCode && omisePaymentData}
-    <div class="qr-modal-backdrop" on:click={() => showQRCode = false} on:keydown={(e) => e.key === 'Escape' && (showQRCode = false)} role="dialog" tabindex="0">
-      <div class="qr-modal" on:click|stopPropagation role="dialog">
-        <div class="qr-modal-header">
-          <button class="close-btn" on:click={() => showQRCode = false}>✕</button>
-        </div>
         
-        <div class="qr-modal-body">
-          <div class="qr-section">
-            <h4>📱 สแกน QR Code ด้วยแอป Banking</h4>
-            <div class="qr-container">
-              {#if isProcessingPayment}
-                <div class="qr-loading">
-                  <div class="spinner"></div>
-                  <p>กำลังสร้าง QR Code...</p>
-                </div>
-              {:else if omisePaymentData?.qr_code_data}
-                <img 
-                  src={omisePaymentData.qr_code_data}
-                  alt="PromptPay QR Code"
-                  class="qr-image"
-                />
-                <div class="qr-info">
-                  <p class="amount">จำนวน: <strong>฿149</strong></p>
-                  <p class="phone">เบอร์: <strong>090-978-3454</strong></p>
-                  <p class="timer">เวลาคงเหลือ: <strong>{Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</strong></p>
-                </div>
-              {:else}
-                <div class="qr-error">
-                  <p>❌ ไม่สามารถสร้าง QR Code ได้</p>
-                  <button class="retry-btn" on:click={createPromptPayPayment}>ลองใหม่</button>
-                </div>
-              {/if}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  <!-- Payment Selection Modal - REMOVED -->
-  {#if false}
-    <div class="payment-modal-backdrop" on:click={() => showPaymentSelection = false} on:keydown={(e) => e.key === 'Escape' && (showPaymentSelection = false)} role="dialog" tabindex="0">
-      <div class="payment-modal" on:click|stopPropagation role="dialog">
-        <div class="payment-modal-header">
-        </div>
-        
-        <div class="payment-modal-body">
-          <div class="payment-methods-grid">
-            {#each paymentMethods as method}
-              <button 
-                class="payment-method-btn {selectedPaymentMethod === method.id ? 'selected' : ''}"
-                on:click={() => selectPaymentMethod(method.id)}
-              >
-                <div class="method-logo">
-                  <img 
-                    src={method.logo} 
-                    alt="{method.name}" 
-                    class="method-logo-img {method.id}-logo"
-                    style={method.id === 'promptpay' ? 'width: 320px !important; height: 320px !important; max-width: 320px !important; max-height: 320px !important;' : (method.id === 'truewallet' ? 'width: 200px !important; height: 200px !important; max-width: 200px !important; max-height: 200px !important;' : '')}
-                    on:load={(e) => {
-                      const img = e.target as HTMLImageElement;
-                      if (img) {
-                        if (method.id === 'promptpay') {
-                          img.style.width = '320px';
-                          img.style.height = '320px';
-                          img.style.maxWidth = '320px';
-                          img.style.maxHeight = '320px';
-                        } else if (method.id === 'truewallet') {
-                          img.style.width = '200px';
-                          img.style.height = '200px';
-                          img.style.maxWidth = '200px';
-                          img.style.maxHeight = '200px';
-                        } else {
-                          // ล้าง style สำหรับ PromptPay
-                          img.style.width = '';
-                          img.style.height = '';
-                          img.style.maxWidth = '';
-                          img.style.maxHeight = '';
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                {#if selectedPaymentMethod === method.id}
-                  <div class="selected-indicator">✓</div>
-                {/if}
-              </button>
-            {/each}
-          </div>
-          
-          <div class="payment-action-buttons">
-            <button 
-              class="confirm-payment-btn" 
-              on:click={goToPaymentPage}
-            >
-              ยืนยัน
-            </button>
             
-            <button 
-              class="cancel-payment-btn" 
-              on:click={() => showPaymentSelection = false}
-            >
-              ยกเลิก
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
-
-    <!-- Payment Page Modal - REMOVED -->
-    {#if false}
-      <div class="payment-page-backdrop" on:click={(e) => e.preventDefault()} role="dialog" tabindex="0">
-        <div class="payment-page-modal" on:click|stopPropagation role="dialog" style="border: 4px solid #00ffff !important; border-width: 4px !important;">
-          <div class="payment-page-header">
           </div>
           
-          <div class="payment-page-body">
-            {#if selectedPaymentMethod === 'promptpay'}
-              <!-- PromptPay Payment Page -->
-              <div class="promptpay-section">
-                <div class="qr-section">
-                  <h3>📱 PromptPay QR Code</h3>
-                  <div class="qr-container">
-                    {#if isProcessingPayment}
-                      <div class="qr-loading">
-                        <div class="spinner"></div>
-                        <p>กำลังสร้าง QR Code...</p>
+    </div>
+
+    {#if $modalStep === 4}
+      <div class="vip-popup-overlay" on:click={() => goBackToStep(0)} on:keydown={(e) => e.key === 'Escape' && goBackToStep(0)}>
+        <div class="vip-popup" on:click|stopPropagation on:keydown|stopPropagation>
+          <button class="vip-popup-close-btn" on:click={() => goBackToStep(0)}>×</button>
+          
+          <div class="vip-popup-header">
+            <h3 class="vip-popup-title">VIP Premium</h3>
+            <p class="vip-popup-subtitle">License Key จาก ArtYWoof</p>
                       </div>
-                    {:else if omisePaymentData?.qr_code_data}
-                      <!-- แสดง QR Code -->
-                      <div class="qr-container">
-                        <img 
-                          src={omisePaymentData.qr_code_data} 
-                          alt="PromptPay QR Code"
-                          class="qr-image"
-                        />
-                        <p>สแกนด้วยแอป Banking</p>
-                        <p>฿149 → 090-978-3454</p>
-                      </div>
-                    {:else}
-                      <div class="qr-placeholder">
-                        <p>กดปุ่ม "เปย์" เพื่อสร้าง QR Code</p>
-                      </div>
+          
+          <div class="vip-popup-content">
+            <div class="vip-popup-input-container">
+              <input 
+                type="text" 
+                bind:value={vipLicenseKey}
+                placeholder="ใส่ License Key ที่นี่..."
+                class="vip-popup-input {inputError ? 'error' : ''} {inputSuccess ? 'success' : ''}"
+                on:keydown={(e) => e.key === 'Enter' && validateVipLicense()}
+              />
+              {#if inputError}
+                  <div class="vip-popup-error-msg">{inputError}</div>
                     {/if}
-                  </div>
-                  <div class="qr-info">
-                    <p class="qr-amount">฿{calculateFinalAmount()}</p>
-                    <p class="qr-instruction">สแกน QR Code ผ่านแอป Banking ทุกธนาคาร</p>
-                  </div>
-                </div>
-              </div>
-            {:else if selectedPaymentMethod === 'truewallet'}
-              <!-- True Wallet Payment Page -->
-              <div class="truewallet-section">
-                <div class="truewallet-display">
-                  <h3>💙 True Wallet</h3>
-                  <div class="truewallet-container">
-                    <div class="truewallet-icon">💙</div>
-                    <div class="truewallet-info">
-                      <p class="truewallet-amount">฿{calculateFinalAmount()}</p>
-                      <p class="truewallet-instruction">จ่ายผ่าน True Wallet App</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {#if inputSuccess}
+                  <div class="vip-popup-success-msg">{inputSuccess}</div>
             {/if}
-            
-            <div class="payment-action-buttons">
-              <button 
-                class="confirm-payment-btn {isProcessingPayment ? 'processing' : ''}" 
-                on:click={() => {
-                  if (selectedPaymentMethod === 'promptpay') {
-                    createPromptPayPayment();
-                  } else if (selectedPaymentMethod === 'truewallet') {
-                    startTrueWalletPayment();
-                  } else {
-                    startOmisePurchase();
-                  }
-                }}
-                disabled={isProcessingPayment}
-              >
-                {#if isProcessingPayment}
-                  <div class="spinner-small"></div>
-                  กำลังสร้างการชำระเงิน...
-                {:else}
-                  เปย์
-                {/if}
-              </button>
-              
-              <button 
-                class="cancel-payment-btn" 
-                on:click={() => showPaymentPage = false}
-              >
-                ยกเลิก
-              </button>
             </div>
-          </div>
-        </div>
-      </div>
-    {/if}
-  {/if}
-
-  <!-- Success Modal -->
-  {#if showSuccessModal}
-    <div class="success-modal-backdrop" on:click={() => showSuccessModal = false} on:keydown={(e) => e.key === 'Escape' && (showSuccessModal = false)} role="dialog" tabindex="0">
-      <div class="success-modal" on:click|stopPropagation role="dialog">
-        <div class="success-modal-content">
-          <div class="success-icon">🎉</div>
-          <h3>ขอบคุณที่อุดหนุนค้าบ 😊</h3>
-          <p>ยินดีต้อนรับสู่ Win Count Pro</p>
-          <p class="success-details">License ของคุณถูกเปิดใช้งานแล้ว</p>
-          <button 
-            class="success-close-btn" 
-            on:click={() => {
-              showSuccessModal = false;
-              closeModal();
-              onLicenseValid();
-            }}
-          >
-            ตกลง
+            
+            <button class="vip-popup-check-btn" on:click={validateVipLicense}>
+              <span class="popup-btn-icon">🔐</span>
+              <span class="popup-btn-text">ตรวจสอบ License Key</span>
           </button>
         </div>
       </div>
@@ -1052,6 +317,7 @@
     font-weight: normal;
     font-style: normal;
   }
+
   .modal-backdrop {
     position: fixed;
     top: 0;
@@ -1081,8 +347,6 @@
     pointer-events: none;
   }
 
-
-
   .license-modal {
     background: #040319;
     border: 4px solid #00ffff !important;
@@ -1099,103 +363,6 @@
     isolation: isolate;
     outline: none !important;
     backdrop-filter: none;
-  }
-
-  .vip-button-small {
-    background: linear-gradient(45deg, #ffd700, #ffed4e);
-    border: none;
-    color: #000000;
-    padding: 8px 16px;
-    font-size: 0.9rem;
-    font-weight: bold;
-    border-radius: 15px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    min-width: 60px;
-  }
-
-  .vip-button-small:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
-  }
-
-  .content-with-vip {
-    position: relative;
-    margin-bottom: 0px;
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .button-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    margin-top: auto;
-    padding-top: 4px;
-    position: relative;
-    width: 100%;
-  }
-
-  .vip-button-floating {
-    position: relative;
-    background: rgba(255, 215, 0, 0.1);
-    border: 1px solid rgba(255, 215, 0, 0.3);
-    color: #ffd700;
-    padding: 18px 30px;
-    overflow: hidden;
-    font-weight: bold;
-    font-size: 2.2rem;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    min-width: 140px;
-    min-height: 55px;
-    display: inline-block;
-    margin: 0;
-    text-align: center;
-    line-height: 1.2;
-    z-index: 10004;
-  }
-
-  .vip-button-floating::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    transition: left 0.5s;
-  }
-
-  .vip-button-floating:hover::before {
-    left: 100%;
-  }
-
-  .vip-text-vertical {
-    font-size: 2.5rem;
-    font-weight: bold;
-    color: #ffd700;
-    white-space: nowrap;
-    text-align: center;
-    transition: all 0.3s ease;
-  }
-
-  .vip-button-floating:hover .vip-text-vertical {
-    font-size: 2.5rem;
-    color: #ffd700;
-  }
-
-  .vip-button-floating:hover {
-    padding: 18px 30px;
-    font-size: 2.5rem;
-    min-width: 140px;
-    min-height: 55px;
-    background: rgba(255, 215, 0, 0.2);
-    border-color: rgba(255, 215, 0, 0.6);
   }
 
   .modal-body {
@@ -1263,24 +430,59 @@
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
-  .features-list {
-    text-align: center;
-    margin: 2px 0;
-    width: 100%;
-    flex: 1;
+  .promotion-banner-compact {
     display: flex;
     flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 15px;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 140, 0, 0.15) 100%);
+    border: 2px solid rgba(255, 215, 0, 0.4);
+    border-radius: 12px;
+    margin: 18px 0 10px 0;
+    width: 92%;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
   }
 
-  .features-list h4 {
-    color: #00ffff;
-    margin-bottom: 4px;
+  .promo-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
     text-align: center;
-    font-size: 1.1rem;
-    font-weight: 600;
+    position: relative;
+    z-index: 1;
   }
 
-  /* Discord Info */
+  .promo-title {
+    font-size: 32px;
+    font-weight: bold;
+    color: #ffd700;
+    letter-spacing: 1px;
+  }
+
+  .promo-savings {
+    font-size: 18px;
+    color: #ffffff;
+    font-weight: 600;
+    background: linear-gradient(45deg, #ff6b35, #f7931e);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .timer-compact {
+    font-size: 14px;
+    color: #ffffff;
+    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
   .discord-info {
     display: flex;
     flex-direction: column;
@@ -1296,17 +498,8 @@
     min-height: 0px;
   }
 
-
-
   .discord-text {
     text-align: center;
-  }
-
-  .discord-text h4 {
-    margin: 0 0 5px 0;
-    color: #7289da;
-    font-size: 1.1rem;
-    font-weight: bold;
   }
 
   .discord-text p {
@@ -1324,8 +517,6 @@
     display: block;
   }
 
-
-
   .discord-icon img {
     width: 300px;
     height: 60px;
@@ -1337,7 +528,16 @@
     filter: brightness(1.2);
   }
 
-
+  .button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: auto;
+    padding-top: 4px;
+    position: relative;
+    width: 100%;
+  }
 
   .buy-button {
     background: rgba(0, 255, 255, 0.1);
@@ -1373,428 +573,276 @@
     left: 100%;
   }
 
-
-
-  .buy-button:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-
-  .loading-section {
-    text-align: center;
-    padding: 40px 20px;
-  }
-
-  .spinner {
-    width: 50px;
-    height: 50px;
-    border: 5px solid rgba(0, 255, 255, 0.3);
-    border-top: 5px solid #00ffff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 20px;
-  }
-
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-
-  .qr-section {
-    text-align: center;
-  }
-
-  .qr-container {
-    margin: 20px 0;
-    padding: 25px;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
-    border-radius: 20px;
-    display: inline-block;
-    border: 2px solid rgba(0, 255, 255, 0.3);
-    box-shadow: 0 8px 32px rgba(0, 255, 255, 0.15);
-  }
-
-  .qr-code {
-    width: 280px;
-    height: 280px;
-    border-radius: 25px;
-    object-fit: contain;
-    transition: opacity 0.3s ease;
-  }
-
-  .qr-code.loading {
-    opacity: 0.5;
-  }
-
-  .qr-code.loaded {
-    opacity: 1;
-  }
-
-  .qr-loading-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.9) 100%);
-    padding: 25px;
-    border-radius: 15px;
-    text-align: center;
-    border: 1px solid rgba(0, 255, 255, 0.3);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  }
-
-  .spinner-small {
-    width: 35px;
-    height: 35px;
-    border: 3px solid rgba(0, 255, 255, 0.2);
-    border-top: 3px solid #00ffff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 12px;
-    box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
-  }
-
-  .qr-error {
-    width: 280px;
-    height: 280px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, rgba(255, 0, 0, 0.05) 0%, rgba(255, 0, 0, 0.1) 100%);
-    border: 2px dashed #ff0000;
-    border-radius: 15px;
-    text-align: center;
-  }
-
-  .retry-qr-btn {
-    background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
-    border: none;
-    color: white;
-    padding: 10px 20px;
+  .vip-button-floating {
+    position: relative;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    color: #ffd700;
+    padding: 18px 30px;
+    overflow: hidden;
+    font-weight: bold;
+    font-size: 2.2rem;
     border-radius: 12px;
     cursor: pointer;
-    margin-top: 15px;
-    font-weight: bold;
+    transition: all 0.3s ease;
     font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    box-shadow: 0 4px 16px rgba(255, 107, 107, 0.3);
-    transition: all 0.3s ease;
-  }
-
-  .retry-qr-btn:hover {
-    background: linear-gradient(135deg, #ff5252 0%, #ff6b6b 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
-  }
-
-  .qr-loading {
-    width: 280px;
-    height: 280px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
-    border-radius: 15px;
-    border: 2px solid rgba(0, 255, 255, 0.3);
-  }
-
-  .qr-code-image {
-    width: 320px;
-    height: 320px;
-    max-width: 320px;
-    max-height: 320px;
-    border-radius: 15px;
-    object-fit: contain;
-    transition: all 0.3s ease;
-    box-shadow: 0 8px 32px rgba(0, 255, 255, 0.2);
-  }
-
-  .qr-placeholder {
-    width: 280px;
-    height: 280px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
-    border-radius: 15px;
-    border: 2px dashed rgba(0, 255, 255, 0.3);
-    color: rgba(0, 255, 255, 0.7);
-    font-family: 'MiSansThai', sans-serif;
-    font-size: 14px;
+    min-width: 140px;
+    min-height: 55px;
+    display: inline-block;
+    margin: 0;
     text-align: center;
+    line-height: 1.2;
+    z-index: 10004;
   }
 
-  .qr-image {
-    width: 320px;
-    height: 320px;
-    max-width: 320px;
-    max-height: 320px;
-    border-radius: 15px;
-    object-fit: contain;
+  .vip-button-floating::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s;
+  }
+
+  .vip-button-floating:hover::before {
+    left: 100%;
+  }
+
+  .vip-text-vertical {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #ffd700;
+    white-space: nowrap;
+    text-align: center;
     transition: all 0.3s ease;
-    box-shadow: 0 8px 32px rgba(0, 255, 255, 0.2);
   }
 
-  .qr-loading p {
-    color: #00ffff;
-    margin-top: 10px;
-    font-size: 0.9rem;
+  .vip-button-floating:hover .vip-text-vertical {
+    font-size: 2.5rem;
+    color: #ffd700;
   }
 
-  .payment-info {
-    margin: 5px 0;
+  .vip-button-floating:hover {
+    padding: 18px 30px;
+    font-size: 2.5rem;
+    min-width: 140px;
+    min-height: 55px;
+    background: rgba(255, 215, 0, 0.2);
+    border-color: rgba(255, 215, 0, 0.6);
+  }
+
+  /* --- 🔥 CSS ใหม่สำหรับ Quest Log Flow --- */
+
+  .quest-step-container {
     padding: 10px;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
   }
-
-  .amount {
-    font-size: 2rem;
-    font-weight: bold;
+  
+  .back-button {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.3);
     color: #00ffff;
-    margin: 5px 0;
+    font-size: 1rem;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: all 0.3s ease;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-family: 'MiSansThai-Bold', sans-serif;
+  }
+  .back-button:hover {
+    opacity: 1;
+    background: rgba(0, 255, 255, 0.2);
   }
 
-  .reference {
-    font-size: 0.9rem;
-    color: #cccccc;
-    margin: 3px 0;
-  }
-
-  .timer {
-    font-size: 1.1rem;
-    font-weight: bold;
-    margin: 5px 0;
-  }
-
-  .payment-instructions {
-    text-align: left;
-    margin: 15px 0 0 0;
-    padding: 20px;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.08) 0%, rgba(0, 255, 255, 0.12) 100%);
-    border-radius: 18px;
-    border: 2px solid rgba(0, 255, 255, 0.3);
-    box-shadow: 0 6px 24px rgba(0, 255, 255, 0.15);
-    backdrop-filter: blur(0px);
-  }
-
-  .payment-instructions h4 {
+  .quest-step-container h3 {
     color: #00ffff;
-    margin-bottom: 10px;
+    font-size: 2.5rem;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    margin-bottom: 0px;
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
   }
-
-  .payment-instructions ol {
+  
+  .step-instruction {
     color: #ffffff;
-    padding-left: 20px;
+    font-size: 1.3rem;
+    line-height: 1.5;
+    margin-top: 10px;
+    margin-bottom: 14px;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    background: rgba(0, 255, 255, 0.1);
+    padding: 15px 20px;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    font-family: 'MiSansThai', sans-serif;
   }
 
-     .payment-instructions li {
-     margin: 8px 0;
-   }
-   
-       .qr-tips {
-      margin-top: 15px;
-      padding: 15px;
-      background: linear-gradient(135deg, rgba(255, 215, 0, 0.08) 0%, rgba(255, 215, 0, 0.12) 100%);
-      border: 2px solid rgba(255, 215, 0, 0.3);
-      border-radius: 12px;
-      box-shadow: 0 4px 16px rgba(255, 215, 0, 0.15);
+    .qr-image-container {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+  }
 
-    }
-   
-   .qr-tips p {
-     color: #ffd700;
-     margin: 0 0 8px 0;
+  .promptpay-logo {
+    width: 240px;
+    height: 80px;
+    border-radius: 6px;
+    border: 1px solid #00ffff
+  }
+  
+  .qr-image-style {
+    width: 240px;
+    height: 240px;
+    border-radius: 10px;
+    border: 2px solid #00ffff;
+  }
+
+    .qr-footer {
+    text-align: center;
+    color: #00ffff;
+    font-size: 1.4rem;
+    font-weight: bold;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    margin-top: -6px;
+  }
+
+  .quest-machine-id {
+    margin-bottom: 30px !important;
+  }
+
+  .next-step-button {
+    background: linear-gradient(135deg, #00ffff 0%, #0099cc 100%);
+    color: #000000;
+    border: none;
+    border-radius: 12px;
+    padding: 18px 26px;
+    font-size: 1.6rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    margin-top: auto; /* ดันปุ่มไปล่างสุด */
+  }
+
+  .next-step-button:hover {
+    transform: translateY(-2px);
+  }
+  
+  /* Machine ID Display */
+  .machine-id-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+    padding: 15px 20px;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+  }
+
+  .machine-id-box span {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 1.4rem;
+    color: #00ffff;
+    word-break: break-all;
      font-weight: bold;
    }
    
-   .qr-tips ul {
-     margin: 0;
-     padding-left: 20px;
-   }
-   
-   .qr-tips li {
-     color: #ffffff;
-     margin: 4px 0;
-     font-size: 0.9rem;
-   }
-
-  .success-section, .error-section {
-    text-align: center;
-    padding: 40px 20px;
-  }
-
-  .success-icon, .error-icon {
-    font-size: 4rem;
-    margin-bottom: 20px;
-  }
-
-  .success-section h3 {
-    color: #00ff00;
-    margin: 10px 0;
-  }
-
-  .error-section h3 {
-    color: #ff0000;
-    margin: 10px 0;
-  }
-
-  .expires-info {
-    color: #cccccc;
-    font-size: 0.9rem;
-    margin-top: 10px;
-  }
-
-  .retry-button {
-    background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
-    border: none;
-    color: #ffffff;
-    padding: 12px 25px;
-    font-size: 1rem;
-    border-radius: 20px;
+  .machine-id-box button {
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    color: #00ffff;
+    font-size: 1.3rem;
     cursor: pointer;
-    margin-top: 20px;
+    opacity: 1;
     transition: all 0.3s ease;
-  }
-
-  .retry-button:hover {
-    transform: scale(1.05);
-  }
-
-  .error-message {
-    background: rgba(255, 0, 0, 0.1);
-    border: 1px solid #ff0000;
-    color: #ff0000;
-    padding: 10px;
+    padding: 10px 16px;
     border-radius: 8px;
-    margin: 10px 0;
   }
 
-  .success-message {
-    background: rgba(0, 255, 0, 0.1);
-    border: 1px solid #00ff00;
-    color: #00ff00;
-    padding: 10px;
-    border-radius: 8px;
-    margin: 10px 0;
+  .machine-id-box button:hover {
+    opacity: 1;
+    background: rgba(0, 255, 255, 0.2);
+    transform: translateY(-1px);
   }
 
-  /* VIP Modal Styles */
-  .vip-modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(4, 3, 25, 0.8);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 10005;
-
-  }
-
-  .vip-modal {
-    background: linear-gradient(135deg, #040319 0%, #0a0a2a 100%);
-    border: 2px solid #ffd700;
-    border-radius: 18px;
-    max-width: 450px;
-    width: 85%;
+  /* VIP Input */
+  .input-container {
     position: relative;
-    z-index: 10002;
-    box-shadow: 0 20px 60px rgba(255, 215, 0, 0.2);
-  }
-
-  .vip-modal-header {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 14px 25px;
-    border-bottom: 1px solid rgba(255, 215, 0, 0.3);
-  }
-
-  .vip-modal-header h3 {
-    margin: 0;
-    color: #ffd700;
-    font-size: 1.8rem;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .vip-modal-body {
-    padding: 0px 25px 16px 25px;
-  }
-
-  .vip-modal-body p {
-    color: #ffffff;
-    margin-bottom: 10px;
-    font-size: 1.1rem;
-    font-family: 'MiSansThai', sans-serif;
+    margin-bottom: 0px;
   }
 
   .vip-input {
     width: 90%;
-    padding: 15px 22px;
-    border: 2px solid rgba(255, 215, 0, 0.3);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.1);
+    padding: 18px 25px;
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    border-radius: 15px;
+    background: rgba(0, 255, 255, 0.1);
     color: #ffffff;
-    font-size: 1.2rem;
-    font-family: 'MiSansThai', sans-serif;
-    margin-bottom: 15px;
+    font-size: 1.4rem;
+    font-family: 'MiSansThai-Bold', sans-serif;
+    margin-bottom: 8px;
     margin-left: auto;
     margin-right: auto;
     display: block;
     text-align: center;
-    letter-spacing: 1px;
+    letter-spacing: 0px;
+    transition: all 0.3s ease;
   }
 
   .vip-input:focus {
     outline: none;
-    border-color: #ffd700;
-    box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+    border-color: #00ffff;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+    background: rgba(0, 255, 255, 0.15);
   }
 
   .vip-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .input-container {
-    position: relative;
-    margin-bottom: 15px;
+    color: rgba(126, 126, 126, 0.8);
   }
 
   .vip-input.error {
     border-color: #ff0000 !important;
-    box-shadow: 0 0 10px rgba(255, 0, 0, 0.3) !important;
+    box-shadow: 0 0 15px rgba(255, 0, 0, 0.4) !important;
   }
 
   .vip-input.success {
     border-color: #00ff00 !important;
-    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3) !important;
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.4) !important;
   }
 
   .input-error {
     color: #ff0000;
-    font-size: 0.9rem;
-    margin-top: 8px;
-    padding: 8px 12px;
+    font-size: 1rem;
+    margin-top: 10px;
+    padding: 12px 15px;
     background: rgba(255, 0, 0, 0.1);
     border: 1px solid rgba(255, 0, 0, 0.3);
-    border-radius: 8px;
-    font-family: 'MiSansThai', sans-serif;
+    border-radius: 10px;
+    font-family: 'MiSansThai-Bold', sans-serif;
     animation: slideInDown 0.3s ease-out;
   }
 
   .input-success {
     color: #00ff00;
-    font-size: 0.9rem;
-    margin-top: 8px;
-    padding: 8px 12px;
+    font-size: 1rem;
+    margin-top: 10px;
+    padding: 12px 15px;
     background: rgba(0, 255, 0, 0.1);
     border: 1px solid rgba(0, 255, 0, 0.3);
-    border-radius: 8px;
-    font-family: 'MiSansThai', sans-serif;
+    border-radius: 10px;
+    font-family: 'MiSansThai-Bold', sans-serif;
     animation: slideInDown 0.3s ease-out;
   }
 
@@ -1813,722 +861,126 @@
     display: flex;
     gap: 15px;
     justify-content: center;
-    margin-top: 0px;
+    margin-top: 10px;
   }
 
   .vip-validate-btn {
-    background: rgba(255, 215, 0, 0.1);
-    border: 1px solid rgba(255, 215, 0, 0.3);
-    color: #ffd700;
-    padding: 12px 25px;
-    font-size: 1.1rem;
+    background: rgba(0, 255, 255, 0.1);
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    color: #00ffff;
+    padding: 15px 30px;
+    font-size: 1.2rem;
     font-weight: bold;
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
+    font-family: 'MiSansThai-Bold', sans-serif;
   }
 
   .vip-validate-btn:hover {
-    transform: scale(1.02);
-    box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
-    background: rgba(255, 215, 0, 0.2);
-    border-color: rgba(255, 215, 0, 0.5);
-  }
-
-  .vip-cancel-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: #ffffff;
-    padding: 12px 25px;
-    font-size: 1.1rem;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'MiSansThai', sans-serif;
-  }
-
-  .vip-cancel-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  /* Test License Button */
-  .test-license-btn {
-    background: rgba(255, 0, 255, 0.1);
-    border: 1px solid rgba(255, 0, 255, 0.3);
-    color: #ff00ff;
-    padding: 8px 16px;
-    font-size: 1rem;
-    font-weight: bold;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    margin-top: 10px;
-    position: absolute;
-    top: 50%;
-    left: -80px;
-    transform: translateY(calc(-50% + 8px));
-    z-index: 10006;
-  }
-
-  .test-license-btn:hover {
-    transform: translateY(calc(-50% + 8px)) scale(1.02);
-    box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
-    background: rgba(255, 0, 255, 0.2);
-    border-color: rgba(255, 0, 255, 0.5);
-  }
-
-  /* Payment Method Selection Styles */
-  .payment-method-section {
-    margin: 20px 0;
-  }
-
-  .payment-methods-grid {
-    display: grid;
-    gap: 12px;
-    margin-top: 12px;
-  }
-
-  .payment-method-btn {
-    display: flex;
-    align-items: center;
-    padding: 16px;
-    border: 2px solid #e0e0e0;
-    border-radius: 12px;
-    background: white;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-  }
-
-  .payment-method-btn:hover {
-    border-color: #00e5ff;
-    background: #f0fcff;
-  }
-
-  .payment-method-btn.selected {
-    border-color: #00e5ff;
-    background: linear-gradient(135deg, #f0fcff 0%, #e0f7ff 100%);
-    box-shadow: 0 4px 12px rgba(0, 229, 255, 0.2);
-  }
-
-  .method-icon {
-    font-size: 32px;
-    margin-right: 16px;
-  }
-
-  .method-info {
-    flex: 1;
-    text-align: left;
-  }
-
-  .method-name {
-    font-weight: bold;
-    font-size: 16px;
-    color: #333;
-  }
-
-  .method-desc {
-    font-size: 14px;
-    color: #666;
-    margin: 4px 0;
-  }
-
-  .method-fees {
-    font-size: 12px;
-    color: #00a86b;
-    font-weight: 500;
-  }
-
-  .selected-indicator {
-    color: #00e5ff;
-    font-size: 20px;
-    font-weight: bold;
-  }
-
-  .customer-info-section {
-    margin: 20px 0;
-  }
-
-  .phone-input-group {
-    margin-top: 16px;
-  }
-
-  .customer-phone-input {
-    width: 100%;
-    padding: 12px 16px;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    font-size: 16px;
-    transition: border-color 0.2s ease;
-  }
-
-  .customer-phone-input:focus {
-    outline: none;
-    border-color: #00e5ff;
-  }
-
-  .customer-email-input {
-    width: 100%;
-    padding: 12px 16px;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    font-size: 16px;
-    transition: border-color 0.2s ease;
-  }
-
-  .customer-email-input:focus {
-    outline: none;
-    border-color: #00e5ff;
-  }
-
-  /* Omise Payment Selection Styles */
-  .omise-payment-section {
-    margin: 20px 0;
-  }
-
-  .payment-label {
-    display: block;
-    font-size: 16px;
-    font-weight: 600;
-    color: #00e5ff;
-    margin-bottom: 16px;
-  }
-
-  .omise-methods-grid {
-    display: grid;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-
-  .omise-method-btn {
-    display: flex;
-    flex-direction: column;
-    padding: 16px;
-    border: 2px solid #e0e0e0;
-    border-radius: 12px;
-    background: white;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-    text-align: left;
-  }
-
-  .omise-method-btn:hover {
-    border-color: #00e5ff;
-    background: #f0fcff;
-  }
-
-  .omise-method-btn.selected {
-    border-color: #00e5ff;
-    background: linear-gradient(135deg, #f0fcff 0%, #e0f7ff 100%);
-    box-shadow: 0 4px 12px rgba(0, 229, 255, 0.2);
-  }
-
-  .method-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-
-  .method-icon {
-    font-size: 24px;
-  }
-
-  .method-name {
-    font-weight: bold;
-    font-size: 16px;
-    color: #333;
-    flex: 1;
-  }
-
-  .popular-badge {
-    background: linear-gradient(135deg, #ff6b6b, #ff8e53);
-    color: white;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: bold;
-  }
-
-  .method-details {
-    margin-left: 36px;
-  }
-
-  .method-desc {
-    font-size: 14px;
-    color: #666;
-    margin-bottom: 4px;
-  }
-
-  .method-fees {
-    font-size: 13px;
-    color: #00a86b;
-    font-weight: 500;
-  }
-
-  .selected-indicator {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    color: #00e5ff;
-    font-size: 20px;
-    font-weight: bold;
-  }
-
-  .price-breakdown {
-    background: rgba(0, 229, 255, 0.1);
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid rgba(0, 229, 255, 0.3);
-    margin-bottom: 20px;
-  }
-
-  .base-price, .fee-price {
-    font-size: 14px;
-    color: #666;
-    margin: 2px 0;
-  }
-
-  .total-price {
-    font-size: 16px;
-    color: #00e5ff;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid rgba(0, 229, 255, 0.2);
-  }
-
-  .free-notice {
-    background: linear-gradient(135deg, #00e5ff, #0099cc);
-    color: white;
-    padding: 12px;
-    border-radius: 8px;
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 14px;
-  }
-
-  .omise-purchase-btn {
-    width: 100%;
-    background: linear-gradient(135deg, #00e5ff 0%, #0099cc 100%);
-    color: #000;
-    border: none;
-    border-radius: 16px;
-    padding: 20px;
-    font-size: 18px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-  }
-
-  .omise-purchase-btn:hover:not(.processing) {
-    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4);
-  }
-
-  .omise-purchase-btn.processing {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-
-  .spinner-small {
-    width: 20px;
-    height: 20px;
-    border: 2px solid transparent;
-    border-top: 2px solid #00e5ff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-
-  /* Payment Selection Modal Styles */
-  .payment-modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.1);
-    backdrop-filter: blur(2px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10005;
-    padding: 20px;
-    border-radius: 24px;
-    margin: 10px;
-    pointer-events: all;
-  }
-
-  .payment-modal {
-    background: #040319;
-    border: 4px solid #00ffff !important;
-    border-radius: 35px;
-    width: 440px !important;
-    height: 740px !important;
-    overflow-y: auto;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 10004;
-    pointer-events: auto;
-    isolation: isolate;
-    outline: none !important;
-    backdrop-filter: none;
-  }
-
-  /* Responsive Design */
-  @media (max-width: 480px) {
-    .payment-modal {
-      width: 95vw !important;
-      height: 90vh !important;
-      border-radius: 25px;
-    }
-    
-    .payment-method-btn {
-      max-width: 280px;
-      padding: 15px;
-    }
-    
-    .method-logo {
-      width: 100px;
-      height: 75px;
-    }
-    
-    .truewallet-logo {
-      width: 150px !important;
-      height: 150px !important;
-      max-width: 150px !important;
-      max-height: 150px !important;
-    }
-    
-    .promptpay-logo {
-      width: auto !important;
-      height: auto !important;
-      max-width: 240% !important;
-      max-height: 240% !important;
-    }
-  }
-
-  @media (max-width: 360px) {
-    .payment-modal {
-      width: 98vw !important;
-      height: 95vh !important;
-      border-radius: 20px;
-    }
-    
-    .payment-method-btn {
-      max-width: 250px;
-      padding: 25px;
-    }
-    
-    .method-logo {
-      width: 80px;
-      height: 0px;
-    }
-    
-    .truewallet-logo {
-      width: 120px !important;
-      height: 120px !important;
-      max-width: 120px !important;
-      max-height: 120px !important;
-    }
-    
-    .promptpay-logo {
-      width: 150px !important;
-      height: 150px !important;
-      max-width: 150px !important;
-      max-height: 150px !important;
-    }
-  }
-
-  .payment-modal-header {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    padding: 20px 25px;
-  }
-
-
-
-  .payment-modal-body {
-    padding: 15px 20px;
-    height: calc(100% - 80px);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .payment-methods-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 25px;
-    margin-bottom: 30px;
-    flex: 1;
-    align-items: center;
-    justify-content: flex-start;
-    padding-top: 20px;
-  }
-
-  .payment-method-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px;
-    border: 3px solid rgba(0, 255, 255, 0.3);
-    border-radius: 25px;
-    background: rgba(0, 255, 255, 0.05);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-    width: 100%;
-    max-width: 350px;
-    min-height: 200px;
-  }
-
-  .payment-method-btn:hover {
-    border-color: #00ffff;
-    background: rgba(0, 255, 255, 0.1);
     transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(0, 255, 255, 0.2);
-  }
-
-  .payment-method-btn.selected {
-    border-color: #00ffff;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.15) 0%, rgba(0, 255, 255, 0.25) 100%);
-    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
-  }
-
-  .method-logo {
-    width: 120px;
-    height: 90px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 0;
-  }
-
-  .method-logo img {
-    max-width: 300%;
-    max-height: 300%;
-    object-fit: contain;
-  }
-
-  /* ปรับขนาดเฉพาะ True Wallet */
-  .truewallet-logo {
-    width: 200px !important;
-    height: 200px !important;
-    max-width: 200px !important;
-    max-height: 200px !important;
-  }
-
-  /* กำหนดขนาดสำหรับ PromptPay */
-  .promptpay-logo {
-    width: 320px !important;
-    height: 320px !important;
-    max-width: 320px !important;
-    max-height: 320px !important;
-  }
-
-  .selected-indicator {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    color: #00ffff;
-    font-size: 24px;
-    font-weight: bold;
+     box-shadow: 0 8px 25px rgba(0, 255, 255, 0.4);
     background: rgba(0, 255, 255, 0.2);
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+     border-color: rgba(0, 255, 255, 0.5);
+   }
 
-  .price-breakdown {
-    background: rgba(0, 255, 255, 0.1);
-    padding: 12px;
-    border-radius: 12px;
-    border: 1px solid rgba(0, 255, 255, 0.3);
-    margin-bottom: 15px;
-  }
+   /* VIP Premium Page Styles */
+   .vip-premium {
+     background: rgba(255, 215, 0, 0.05);
+     border: 2px solid rgba(255, 215, 0, 0.2);
+    border-radius: 20px;
+     padding: 20px;
+   }
 
-  .base-price, .fee-price {
-    font-size: 14px;
-    color: #cccccc;
-    margin: 3px 0;
-  }
+   .vip-back {
+     background: rgba(178, 175, 155, 0.1) !important;
+     border: 1px solid rgba(255, 215, 0, 0.3) !important;
+     color: #ffd700 !important;
+   }
 
-  .total-price {
-    font-size: 18px;
-    color: #00ffff;
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(0, 255, 255, 0.2);
-    font-weight: bold;
-  }
+   .vip-back:hover {
+     background: rgba(255, 215, 0, 0.2) !important;
+   }
 
-  .free-notice {
-    background: linear-gradient(135deg, #00ffff, #0099cc);
-    color: #000000;
-    padding: 12px;
-    border-radius: 12px;
-    text-align: center;
-    margin-bottom: 15px;
-    font-size: 16px;
-    font-weight: bold;
-  }
+   .vip-title {
+     color: #ffd700 !important;
+     text-shadow: 0 0 10px rgba(255, 215, 0, 0.3) !important;
+   }
 
-  .email-input-group {
-    margin-bottom: 15px;
-  }
+   .vip-instruction {
+     background: rgba(255, 215, 0, 0.1) !important;
+     border: 1px solid rgba(255, 215, 0, 0.2) !important;
+     color: #ffffff !important;
+   }
 
-  .email-input-group label {
-    display: block;
-    color: #ffffff;
-    margin-bottom: 8px;
-    font-weight: bold;
-  }
+   .vip-input-style {
+     border: 2px solid rgba(255, 215, 0, 0.3) !important;
+     background: rgba(255, 215, 0, 0.1) !important;
+     color: #ffffff !important;
+   }
 
-  .customer-email-input {
-    width: 100%;
-    padding: 15px;
-    border: 2px solid rgba(0, 255, 255, 0.3);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-    font-size: 16px;
-    font-family: 'MiSansThai', sans-serif;
-  }
+   .vip-input-style:focus {
+     border-color: #ffd700 !important;
+     box-shadow: 0 0 20px rgba(255, 215, 0, 0.4) !important;
+     background: rgba(255, 215, 0, 0.15) !important;
+   }
 
-  .customer-email-input:focus {
-    outline: none;
-    border-color: #00ffff;
-    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-  }
+   .vip-input-style::placeholder {
+     color: rgba(255, 215, 0, 0.6) !important;
+   }
 
-  .customer-email-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-  }
+   .vip-error {
+     background: rgba(255, 0, 0, 0.1) !important;
+     border: 1px solid rgba(255, 0, 0, 0.3) !important;
+   }
 
-  .payment-action-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-top: 10px;
-    position: relative;
-    background: transparent;
-    padding: 10px 0;
-  }
+   .vip-success {
+     background: rgba(0, 255, 0, 0.1) !important;
+     border: 1px solid rgba(0, 255, 0, 0.3) !important;
+   }
 
-  .confirm-payment-btn {
-    flex: 1;
-    background: rgba(0, 255, 255, 0.1);
-    border: 1px solid rgba(0, 255, 255, 0.3);
-    color: #00ffff;
-    padding: 12px 25px;
-    font-size: 1.8rem;
-    font-weight: bold;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    position: relative;
-    overflow: hidden;
-    min-width: 120px;
-  }
+   .vip-btn {
+     background: rgba(255, 215, 0, 0.1) !important;
+     border: 2px solid rgba(255, 215, 0, 0.3) !important;
+     color: #ffd700 !important;
+   }
 
-  .confirm-payment-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    transition: left 0.5s;
-  }
+   .vip-btn:hover {
+     transform: translateY(-3px) !important;
+     box-shadow: 0 8px 25px rgba(255, 215, 0, 0.4) !important;
+     background: rgba(255, 215, 0, 0.2) !important;
+     border-color: rgba(255, 215, 0, 0.5) !important;
+   }
 
-  .confirm-payment-btn:hover::before {
-    left: 100%;
-  }
-
-  .confirm-payment-btn:hover {
-    background: rgba(0, 255, 255, 0.2);
-    border-color: rgba(0, 255, 255, 0.6);
-    transform: translateY(-2px);
-    box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
-  }
-
-  .confirm-payment-btn.processing {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-
-  .cancel-payment-btn {
-    flex: 1;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: #ffffff;
-    padding: 15px 25px;
-    font-size: 1.2rem;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'MiSansThai', sans-serif;
-  }
-
-  .cancel-payment-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.6);
-    transform: translateY(-2px);
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
-  }
-
-  /* Success Modal Styles */
-  .success-modal-backdrop {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               /* VIP Popup Styles */
+                                                                                                                                                                                                                                                                                                                                                                                                                .vip-popup-overlay {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.9);
+           width: 100vw;
+           height: 100vh;
+           background: rgba(0, 0, 0, 0.6);
     display: flex;
-    justify-content: center;
     align-items: center;
-    z-index: 10010;
-    backdrop-filter: blur(10px);
-  }
+    justify-content: center;
+           z-index: 99999;
+    pointer-events: auto;
+                 }
 
-  .success-modal {
-    background: #040319;
-    border: 3px solid #00ff00;
-    border-radius: 25px;
-    width: 400px;
-    max-width: 90vw;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               .vip-popup {
+             background: linear-gradient(135deg, rgba(255, 215, 0, 0.95) 0%, rgba(255, 140, 0, 0.95) 100%);
+             border: 2px solid rgba(255, 215, 0, 1);
+      border-radius: 20px;
+             padding: 30px;
+             width: 350px !important;
+             max-width: 85%;
+    text-align: center;
     position: relative;
-    z-index: 10011;
-    box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
-    animation: successModalIn 0.5s ease-out;
-  }
+               z-index: 100000;
+               animation: popupSlideIn 0.3s ease-out;
+    }
 
-  @keyframes successModalIn {
+          @keyframes popupSlideIn {
     from {
       opacity: 0;
       transform: scale(0.8) translateY(-20px);
@@ -2539,725 +991,159 @@
     }
   }
 
-  .success-modal-content {
-    padding: 40px 30px;
-    text-align: center;
-  }
-
-  .success-icon {
-    font-size: 4rem;
-    margin-bottom: 20px;
-    animation: successBounce 1s ease-in-out;
-  }
-
-  @keyframes successBounce {
-    0%, 20%, 50%, 80%, 100% {
-      transform: translateY(0);
-    }
-    40% {
-      transform: translateY(-10px);
-    }
-    60% {
-      transform: translateY(-5px);
-    }
-  }
-
-  .success-modal-content h3 {
-    color: #00ff00;
-    font-size: 1.8rem;
-    font-weight: bold;
-    margin-bottom: 15px;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .success-modal-content p {
-    color: #ffffff;
-    font-size: 1.1rem;
-    margin-bottom: 10px;
-    font-family: 'MiSansThai', sans-serif;
-  }
-
-  .success-details {
-    color: #cccccc;
-    font-size: 1rem;
-    margin-bottom: 25px;
-  }
-
-  .success-close-btn {
-    background: rgba(0, 255, 0, 0.1);
-    border: 2px solid rgba(0, 255, 0, 0.3);
-    color: #00ff00;
-    padding: 15px 30px;
-    font-size: 1.2rem;
-    font-weight: bold;
-    border-radius: 15px;
+       .vip-popup-close-btn {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 215, 0, 0.5);
+     color: #ffd700;
+     font-size: 1.5rem;
     cursor: pointer;
+      opacity: 0.8;
     transition: all 0.3s ease;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .success-close-btn:hover {
-    background: rgba(0, 255, 0, 0.2);
-    border-color: rgba(0, 255, 0, 0.6);
-    transform: translateY(-2px);
-    box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
-  }
-
-  /* QR Code Section Styles */
-  .qr-section {
-    text-align: center;
-    padding: 0px;
-  }
-
-  .qr-section h3 {
-    color: #00ffff;
-    font-size: 1.8rem;
-    margin-bottom: 10px;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .qr-container {
-    width: 250px;
-    height: 250px;
-    margin: 0 auto 10px;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
-    border: 2px solid rgba(0, 255, 255, 0.3);
-    border-radius: 20px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-family: 'MiSansThai-Bold', sans-serif;
+      width: 35px;
+      height: 35px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  .qr-info {
+        .vip-popup-close-btn:hover {
+       opacity: 1;
+       background: rgba(0, 0, 0, 0.3);
+      transform: scale(1.1);
+    }
+
+          /* VIP Popup Header Styles */
+      .vip-popup-header {
+        margin-bottom: 25px;
     text-align: center;
-  }
+      }
 
-  .qr-amount {
-    font-size: 2rem;
-    font-weight: bold;
-    color: #00ffff;
-    margin-bottom: 10px;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
+     .vip-popup-title {
+        color: #000000 !important;
+        font-size: 2.2rem !important;
+        font-family: 'MiSansThai-Bold', sans-serif;
+        margin-bottom: 8px !important;
+        text-shadow: 0 0 10px rgba(255, 215, 0, 0.3) !important;
+      }
 
-  .qr-instruction {
-    color: #cccccc;
-    font-size: 1.1rem;
+     .vip-popup-subtitle {
+       color: #333333 !important;
+       font-size: 1rem !important;
     font-family: 'MiSansThai', sans-serif;
-  }
-
-  /* True Wallet Section Styles */
-  .truewallet-display {
-    text-align: center;
-    padding: 60px;
-  }
-
-  .truewallet-display h3 {
-    color: #ff6b6b;
-    font-size: 1.8rem;
-    margin-bottom: 0px;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .truewallet-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0px;
-  }
-
-  .truewallet-icon {
-    font-size: 4rem;
-    margin-bottom: 10px;
-  }
-
-  .truewallet-info {
-    text-align: center;
-  }
-
-  .truewallet-amount {
-    font-size: 2rem;
-    font-weight: bold;
-    color: #ff6b6b;
-    margin-bottom: 10px;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .truewallet-instruction {
-    color: #cccccc;
-    font-size: 1.1rem;
-    font-family: 'MiSansThai', sans-serif;
-  }
-
-
-
-  /* Pay Button Styles */
-  .pay-button {
-    background: linear-gradient(135deg, #00ffff 0%, #0099cc 100%);
-    color: #000000;
-    border: none;
-    border-radius: 15px;
-    padding: 18px 30px;
-    font-size: 18px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .pay-button:hover {
-    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
-    transform: translateY(-2px);
-  }
-
-  /* Payment Page Modal Styles */
-  .payment-page-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.1);
-    backdrop-filter: blur(2px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10007;
-    padding: 20px;
-    border-radius: 24px;
-    margin: 10px;
-    pointer-events: all;
-  }
-
-  .payment-page-modal {
-    background: #040319;
-    border: 4px solid #00ffff !important;
-    border-radius: 35px;
-    width: 440px;
-    height: 740px;
-    overflow-y: auto;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 10008;
-  }
-
-  /* Override any other CSS */
-  div[class*="payment-page-modal"] {
-    border: 4px solid #00ffff !important;
-  }
-
-  .payment-page-header {
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    padding: 15px 25px;
-    padding-bottom: 10px;
-  }
-
-  .cancel-payment-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: #ffffff;
-    padding: 12px 25px;
-    font-size: 1.8rem;
-    font-weight: bold;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    min-width: 120px;
-  }
-
-  .cancel-payment-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
-  }
-
-  .back-btn:hover {
-    background: rgba(0, 255, 255, 0.1);
-    transform: scale(1.1);
-  }
-
-  .payment-page-header h3 {
+       opacity: 0.8;
     margin: 0;
-    color: #00ffff;
-    font-size: 2rem;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
+     }
 
-  .amount-display {
-    font-size: 1.8rem;
-    font-weight: bold;
-    color: #00ffff;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .payment-page-body {
-    padding: 20px 25px;
-    height: calc(100% - 50px);
-    overflow-y: auto;
+          /* VIP Popup Content Styles */
+      .vip-popup-content {
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    justify-content: center;
-    align-items: center;
-    padding-top: 0;
-  }
+        gap: 20px;
+      }
 
-  /* โปรโมชั่น Banner - Compact */
-  .promotion-banner-compact {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 15px;
-    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 140, 0, 0.15) 100%);
-    border: 2px solid rgba(255, 215, 0, 0.4);
-    border-radius: 12px;
-    margin: 18px 0 10px 0;
-    width: 92%;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s ease;
-  }
+        .vip-popup-input-container {
+       margin-bottom: 15px;
+     }
 
-  /* โปรโมชั่น Banner หลัก */
-  .promotion-banner {
-    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 140, 0, 0.15) 100%);
-    border: 2px solid rgba(255, 215, 0, 0.4);
-    border-radius: 12px;
-    padding: 15px;
-    margin: 10px 0;
-  }
+                                .vip-popup-input {
+         width: 100% !important;
+         padding: 15px 20px !important;
+         border: 2px solid rgba(0, 0, 0, 0.3) !important;
+         border-radius: 12px !important;
+         background: rgba(255, 255, 255, 0.9) !important;
+         color: #000000 !important;
+         font-size: 1.2rem !important;
+         font-family: 'MiSansThai-Bold', sans-serif !important;
+         text-align: center !important;
+         transition: all 0.3s ease !important;
+         margin-bottom: 10px !important;
+         box-sizing: border-box !important;
+         letter-spacing: 1px !important;
+       }
 
+    .vip-popup-input:focus {
+      border-color: #ffd700 !important;
+      box-shadow: 0 0 15px rgba(255, 215, 0, 0.5) !important;
+      background: rgba(255, 255, 255, 1) !important;
+      outline: none !important;
+    }
 
+    .vip-popup-input::placeholder {
+      color: rgba(0, 0, 0, 0.5) !important;
+    }
 
-  .promo-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    text-align: center;
-    position: relative;
-    z-index: 1;
-  }
+    .vip-popup-input.error {
+      border-color: #ff0000 !important;
+      box-shadow: 0 0 10px rgba(255, 0, 0, 0.4) !important;
+    }
 
-  .promo-icon {
-    font-size: 2rem;
-    margin-bottom: 4px;
-  }
+    .vip-popup-input.success {
+      border-color: #00ff00 !important;
+      box-shadow: 0 0 10px rgba(0, 255, 0, 0.4) !important;
+    }
 
-  .promo-text {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 8px;
-  }
-
-  .promo-title {
-    font-size: 32px;
-    font-weight: bold;
-    color: #ffd700;
-    letter-spacing: 1px;
-  }
-
-  .promo-savings {
-    font-size: 18px;
-    color: #ffffff;
-    font-weight: 600;
-    background: linear-gradient(45deg, #ff6b35, #f7931e);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .promo-price {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 8px 0;
-  }
-
-  .old-price {
-    font-size: 16px;
-    color: #cccccc;
-    text-decoration: line-through;
-    opacity: 0.8;
-  }
-
-  .new-price {
-    font-size: 20px;
-    font-weight: bold;
-    color: #ffd700;
-  }
-
-  .timer-compact {
-    font-size: 14px;
-    color: #ffffff;
-    opacity: 0.9;
-    background: rgba(255, 255, 255, 0.1);
-    padding: 6px 12px;
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-
-
-  .promotion-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 8px;
-  }
-
-  .promotion-icon {
-    font-size: 1.2rem;
-  }
-
-  .promotion-title {
-    color: #ffd700;
-    font-size: 32px;
-    font-weight: bold;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-    letter-spacing: 1px;
-  }
-
-  .promotion-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 15px;
-  }
-
-  .price-comparison {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-
-  .original-price {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .promotion-price {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .price-label {
-    color: #ffffff;
-    font-size: 20px;
-    opacity: 0.9;
-  }
-
-  .price-value {
-    font-weight: bold;
-    font-size: 24px;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .original-price .price-value {
-    color: #ffffff;
-    text-decoration: line-through;
-    opacity: 0.7;
-  }
-
-  .promotion-price .price-value {
-    color: #ffd700;
-    font-size: 38px;
-  }
-
-  .discount-badge {
-    background: #ffd700;
-    color: #000000;
-    padding: 3px 6px;
+    .vip-popup-error-msg {
+      color: #ff0000;
+      font-size: 0.9rem;
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: rgba(255, 0, 0, 0.1);
+      border: 1px solid rgba(255, 0, 0, 0.3);
     border-radius: 6px;
-    font-size: 20px;
-    font-weight: bold;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
+      font-family: 'MiSansThai-Bold', sans-serif;
+      animation: slideInDown 0.3s ease-out;
+    }
 
-  .promotion-timer {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background: rgba(255, 255, 255, 0.2);
-    padding: 4px 8px;
-    border-radius: 8px;
-  }
-
-  .timer-icon {
+    .vip-popup-success-msg {
+      color: #00ff00;
     font-size: 0.9rem;
-  }
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: rgba(0, 255, 0, 0.1);
+      border: 1px solid rgba(0, 255, 0, 0.3);
+      border-radius: 6px;
+      font-family: 'MiSansThai-Bold', sans-serif;
+      animation: slideInDown 0.3s ease-out;
+    }
 
-  .timer-text {
-    color: #ffffff;
-    font-size: 20px;
-    font-weight: bold;
-  }
+                                .vip-popup-check-btn {
+         background: linear-gradient(135deg, #ffd700 0%, #ffb347 100%) !important;
+         border: 2px solid #000000 !important;
+         color: #000000 !important;
+         padding: 15px 25px !important;
+         font-size: 1.2rem !important;
+         font-weight: bold !important;
+         border-radius: 12px !important;
+         cursor: pointer !important;
+         transition: all 0.3s ease !important;
+         font-family: 'MiSansThai-Bold', sans-serif !important;
+         width: 100% !important;
+         box-sizing: border-box !important;
+         display: flex !important;
+         align-items: center !important;
+         justify-content: center !important;
+         gap: 10px !important;
+         position: relative !important;
+         overflow: hidden !important;
+       }
 
-  .payment-info {
-    text-align: center;
-    margin-bottom: 15px;
-  }
+       .popup-btn-icon {
+         font-size: 1.3rem !important;
+       }
 
-  .payment-info h4 {
-    color: #00ffff;
-    font-size: 1.5rem;
-    margin-bottom: 10px;
-  }
+       .popup-btn-text {
+         font-size: 1.2rem !important;
+       }
 
-  .payment-info p {
-    color: #cccccc;
-    font-size: 1.1rem;
-    margin-bottom: 20px;
-  }
-
-  .qr-placeholder, .app-placeholder, .card-placeholder {
-    width: 200px;
-    height: 200px;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05) 0%, rgba(0, 255, 255, 0.1) 100%);
-    border: 2px solid rgba(0, 255, 255, 0.3);
-    border-radius: 15px;
-  }
-
-  .qr-loading {
-    text-align: center;
-  }
-
-  .qr-loading p {
-    color: #00ffff;
-    margin-top: 15px;
-  }
-
-  .app-icon, .card-icon {
-    font-size: 60px;
-    margin-bottom: 15px;
-  }
-
-  .payment-instructions {
-    background: rgba(0, 255, 255, 0.05);
-    padding: 12px;
-    border-radius: 15px;
-    border: 1px solid rgba(0, 255, 255, 0.3);
-    margin-bottom: 15px;
-    flex: 1;
-  }
-
-  .payment-instructions h4 {
-    color: #00ffff;
-    margin-bottom: 8px;
-    font-size: 1.1rem;
-  }
-
-  .payment-instructions ol {
-    color: #ffffff;
-    padding-left: 20px;
-  }
-
-  .payment-instructions li {
-    margin: 4px 0;
-    line-height: 1.2;
-    font-size: 0.9rem;
-  }
-
-  .next-payment-btn {
-    width: 100%;
-    background: linear-gradient(135deg, #00ffff 0%, #0099cc 100%);
-    color: #000000;
-    border: none;
-    border-radius: 15px;
-    padding: 18px;
-    font-size: 18px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .next-payment-btn:hover {
-    background: linear-gradient(135deg, #00ccff 0%, #0088bb 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 255, 255, 0.4);
-  }
-
-  /* QR Code Modal Styles */
-  .qr-modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.9);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 10005;
-    backdrop-filter: blur(10px);
-    animation: fadeIn 0.3s ease-out;
-  }
-
-  .qr-modal {
-    background: linear-gradient(145deg, #0a0a0a, #1a1a1a);
-    border: 2px solid #00bfff;
-    border-radius: 15px;
-    width: 500px;
-    max-width: 90vw;
-    max-height: 90vh;
-    box-shadow: 0 20px 60px rgba(0, 191, 255, 0.4);
-    animation: slideIn 0.3s ease-out;
-    overflow: hidden;
-  }
-
-  .qr-modal-header {
-    background: linear-gradient(90deg, #00bfff, #0080ff);
-    color: white;
-    padding: 15px;
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-  }
-
-  .qr-modal-header h3 {
-    margin: 0;
-    font-size: 1.4em;
-    font-weight: bold;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .qr-modal-header .close-btn {
-    background: rgba(0, 191, 255, 0.2);
-    border: 1px solid #00bfff;
-    color: #00bfff;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 18px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
-  }
-
-  .qr-modal-header .close-btn:hover {
-    background: rgba(0, 191, 255, 0.3);
-    border-color: #00bfff;
-    color: white;
-    transform: scale(1.1);
-  }
-
-  .qr-modal-body {
-    padding: 40px;
-    text-align: center;
-    color: #e0e0e0;
-    font-family: 'MiSansThai', sans-serif;
-  }
-
-  .qr-section h4 {
-    margin: 0 0 20px 0;
-    color: #00bfff;
-    font-size: 1.3em;
-    font-family: 'MiSansThai-Bold', 'MiSansThai', sans-serif;
-  }
-
-  .qr-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .qr-image {
-    width: 280px;
-    height: 280px;
-    border: 3px solid #00bfff;
-    border-radius: 15px;
-    background: white;
-    padding: 12px;
-    box-shadow: 0 10px 30px rgba(0, 191, 255, 0.3);
-  }
-
-  .qr-info {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    font-size: 16px;
-    font-family: 'MiSansThai', sans-serif;
-    color: #e0e0e0;
-  }
-
-  .qr-info p {
-    margin: 0;
-    color: #ccc;
-  }
-
-  .qr-info strong {
-    color: #00bfff;
-  }
-
-  .qr-info .timer {
-    color: #ff6b6b;
-    font-size: 16px;
-  }
-
-  .qr-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-    color: #ccc;
-  }
-
-  .qr-error {
-    color: #ff6b6b;
-  }
-
-  .retry-btn {
-    background: linear-gradient(135deg, #00ff88, #00cc66);
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: bold;
-    margin-top: 15px;
-    transition: all 0.2s;
-  }
-
-  .retry-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 255, 136, 0.3);
-  }
-
-  /* Spinner animation for loading */
-  .spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid rgba(0, 255, 136, 0.3);
-    border-top: 4px solid #00ff88;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    .vip-popup-check-btn:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: 0 8px 20px rgba(255, 215, 0, 0.6) !important;
+      background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%) !important;
   }
 </style> 
