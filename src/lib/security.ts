@@ -194,24 +194,46 @@ export class AppSecurity {
     }
   }
 
-  // ระบบป้องกัน Developer Tools
+  // Enhanced Developer Tools Protection
   static preventDevTools(): void {
     try {
-      // Detect developer tools
+      // Block F12, Ctrl+Shift+I, Ctrl+U, etc.
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'F12' || 
+            (e.ctrlKey && e.shiftKey && e.key === 'I') ||
+            (e.ctrlKey && e.shiftKey && e.key === 'J') ||
+            (e.ctrlKey && e.shiftKey && e.key === 'C') ||
+            (e.ctrlKey && e.key === 'U')) {
+          e.preventDefault();
+          e.stopPropagation();
+          console.clear();
+          alert('🚫 Developer Tools ถูกปิดใช้งานเพื่อความปลอดภัย');
+          return false;
+        }
+      });
+      
+      // Block right-click context menu
+      document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        alert('🚫 Right-click ถูกปิดใช้งานเพื่อความปลอดภัย');
+        return false;
+      });
+      
+      // Detect developer tools opening
       const devtools = {
         open: false,
         orientation: null
       };
       
-      const threshold = 160;
+      const threshold = 200; // Increased threshold
       
       setInterval(() => {
         if (window.outerHeight - window.innerHeight > threshold || 
             window.outerWidth - window.innerWidth > threshold) {
           if (!devtools.open) {
             devtools.open = true;
-            console.warn('🚨 Developer tools detected - app will be locked');
-            // Lock the app
+            console.clear();
+            alert('🚫 ตรวจพบการเปิด Developer Tools - แอปจะรีเฟรช');
             window.location.reload();
           }
         } else {
@@ -219,49 +241,101 @@ export class AppSecurity {
         }
       }, 500);
       
-      console.log('✅ Developer tools protection enabled');
+      // Clear console periodically
+      setInterval(() => {
+        console.clear();
+      }, 2000);
+      
+      // Disable text selection
+      document.onselectstart = function() {
+        return false;
+      };
+      
+      // Disable drag
+      document.ondragstart = function() {
+        return false;
+      };
+      
+      console.log('✅ Enhanced Developer tools protection enabled');
     } catch (error) {
       console.error('❌ Failed to prevent dev tools:', error);
     }
   }
 
-  // ระบบป้องกันการ Debug
+  // Enhanced Anti-Debugging Protection
   static preventDebugging(): void {
     try {
-      // Prevent console.log override
+      // Anti-debugging techniques
+      (function() {
+        let startTime = performance.now();
+        debugger;
+        let endTime = performance.now();
+        
+        if (endTime - startTime > 100) {
+          alert('🚫 ตรวจพบ Debugger - แอปจะปิดทันที');
+          window.close();
+        }
+      })();
+      
+      // Prevent console manipulation
       const originalLog = console.log;
       const originalWarn = console.warn;
       const originalError = console.error;
+      const originalClear = console.clear;
       
-      console.log = function(...args) {
-        // Block suspicious console usage
-        const stack = new Error().stack;
-        if (stack && stack.includes('debugger')) {
-          console.warn('🔒 Debugging attempt detected');
-          return;
+      // Override console methods with protection
+      Object.defineProperty(console, 'log', {
+        value: function(...args) {
+          const stack = new Error().stack;
+          if (stack && stack.includes('debugger')) {
+            console.warn('🔒 Debugging attempt detected');
+            return;
+          }
+          return originalLog.apply(this, args);
+        },
+        writable: false,
+        configurable: false
+      });
+      
+      // Detect debugger with timing attacks
+      setInterval(() => {
+        const start = performance.now();
+        debugger;
+        const end = performance.now();
+        
+        if (end - start > 100) {
+          console.warn('🔒 Debugger detected via timing attack');
+          window.location.reload();
         }
-        return originalLog.apply(this, args);
-      };
+      }, 5000);
       
-      console.warn = function(...args) {
-        return originalWarn.apply(this, args);
-      };
-      
-      console.error = function(...args) {
-        return originalError.apply(this, args);
-      };
-      
-      // Prevent debugger statement
+      // Detect debugger via function toString
       setInterval(() => {
         try {
-          eval('debugger');
+          const func = function() {};
+          const original = func.toString();
+          func.toString = function() { return 'modified'; };
+          
+          if (func.toString() !== original && func.toString() === 'modified') {
+            console.warn('🔒 Function modification detected');
+          }
         } catch (e) {
-          // Debugger detected
-          console.warn('🔒 Debugger detected');
+          // Ignore errors
         }
-      }, 1000);
+      }, 3000);
       
-      console.log('✅ Debugging protection enabled');
+      // Block eval and Function constructor
+      window.eval = function() {
+        console.warn('🔒 eval() blocked for security');
+        return null;
+      };
+      
+      window.Function = function() {
+        console.warn('🔒 Function() constructor blocked for security');
+        return function() {};
+      } as any;
+      
+      console.log('✅ Enhanced debugging protection enabled');
     } catch (error) {
       console.error('❌ Failed to prevent debugging:', error);
     }

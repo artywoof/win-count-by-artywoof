@@ -488,10 +488,10 @@
   let paymentCheckInterval: number | null = null;
   
   // App ready state
-  let isAppReady = false; // ควบคุมการแสดงแอพหลัก - ต้องตรวจสอบ License ก่อน
+  // ลบตัวแปร isAppReady และ securityCheckPassed
   
   // Security wrapper - prevent access to main app
-  let securityCheckPassed = false;
+  // ลบตัวแปร isAppReady และ securityCheckPassed
   
   async function checkLicenseStatus() {
     try {
@@ -503,8 +503,7 @@
       if (!savedLicenseKey) {
         console.log('❌ ไม่พบ License Key - ไม่แสดงแอพหลัก');
         isLicenseValid = false;
-        isAppReady = false; // ไม่ให้แสดงแอพหลัก
-        securityCheckPassed = false;
+        // ไม่ให้แสดงแอพหลัก
         showLicenseModal = true;
         return;
       }
@@ -514,22 +513,16 @@
       
       if (isValid) {
         isLicenseValid = true;
-        isAppReady = true; // ให้แสดงแอพหลักได้
-        securityCheckPassed = true;
         console.log('✅ License ถูกต้อง');
       } else {
         console.log('❌ License ไม่ถูกต้อง - ไม่แสดงแอพหลัก');
         isLicenseValid = false;
-        isAppReady = false; // ไม่ให้แสดงแอพหลัก
-        securityCheckPassed = false;
         showLicenseModal = true;
       }
     } catch (error) {
       console.error('❌ License check failed:', error);
       // ในกรณีที่เกิดข้อผิดพลาด ให้ไม่แสดงแอพหลัก
       isLicenseValid = false;
-      isAppReady = false; // ไม่ให้แสดงแอพหลัก
-      securityCheckPassed = false;
       showLicenseModal = true;
     } finally {
       isCheckingLicense = false;
@@ -539,8 +532,6 @@
   function onLicenseValid() {
     isLicenseValid = true;
     showLicenseModal = false;
-    isAppReady = true; // ให้แสดงแอพหลักได้
-    securityCheckPassed = true;
     console.log('✅ License validated successfully - เข้าใช้งานแอพได้แล้ว');
   }
 
@@ -872,6 +863,12 @@
     try {
       // Load initial state from Tauri
       const state = await invoke('get_win_state') as any;
+      if (state === 'UNAUTHORIZED_ACCESS') {
+        console.log('🔒 License not valid - blocking app access');
+        isLicenseValid = false;
+        showLicenseModal = true;
+        return;
+      }
       console.log('🎯 Loaded initial state from Tauri:', state);
       
       win.set(state.win || 0);
@@ -1092,6 +1089,12 @@
       await invoke('set_win', { value: clampedValue });
       console.log('🎯 Win set via Tauri:', clampedValue);
     } catch (err) {
+      if (err === 'UNAUTHORIZED_ACCESS') {
+        console.log('🔒 License not valid - blocking win set');
+        isLicenseValid = false;
+        showLicenseModal = true;
+        return;
+      }
       console.error('❌ Failed to set win:', err);
     }
   }
@@ -1103,6 +1106,12 @@
       await invoke('set_goal', { value: clampedValue });
       console.log('🎯 Goal set via Tauri:', clampedValue);
     } catch (err) {
+      if (err === 'UNAUTHORIZED_ACCESS') {
+        console.log('🔒 License not valid - blocking goal set');
+        isLicenseValid = false;
+        showLicenseModal = true;
+        return;
+      }
       console.error('❌ Failed to set goal:', err);
     }
   }
@@ -1113,6 +1122,12 @@
       await invoke('toggle_goal_visibility');
       console.log('🎯 Goal visibility toggled via Tauri');
     } catch (err) {
+      if (err === 'UNAUTHORIZED_ACCESS') {
+        console.log('🔒 License not valid - blocking goal toggle');
+        isLicenseValid = false;
+        showLicenseModal = true;
+        return;
+      }
       console.error('❌ Failed to toggle goal visibility:', err);
     }
   }
@@ -1123,6 +1138,12 @@
       await invoke('toggle_crown_visibility');
       console.log('👑 Crown visibility toggled via Tauri');
     } catch (err) {
+      if (err === 'UNAUTHORIZED_ACCESS') {
+        console.log('🔒 License not valid - blocking crown toggle');
+        isLicenseValid = false;
+        showLicenseModal = true;
+        return;
+      }
       console.error('❌ Failed to toggle crown visibility:', err);
     }
   }
@@ -2298,8 +2319,6 @@
         setTimeout(() => { showSecurityAlert = false; }, 5000);
         if (domTamperCount >= 5) {
           isLicenseValid = false;
-          isAppReady = false;
-          securityCheckPassed = false;
           showLicenseModal = true;
           securityAlertMsg = '⛔ ตรวจพบการแก้ไขระบบเกิน 5 ครั้ง แอปถูกบล็อก';
           showSecurityAlert = true;
@@ -2335,7 +2354,7 @@
     </div>
 
     <!-- Main Content -->
-    {#if isAppReady}
+    {#if isLicenseValid}
   <div class="main-content">
     <!-- App Title -->
     <div class="app-title-container">
@@ -2546,7 +2565,7 @@
   {#if showSecurityAlert}
     <div class="security-alert-popup">{securityAlertMsg}</div>
   {/if}
-  {#if !securityCheckPassed}
+  {#if !isLicenseValid}
     <!-- Show only LicenseModal when license is not valid -->
     <LicenseModal 
       isOpen={true} 

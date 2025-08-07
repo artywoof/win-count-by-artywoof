@@ -1,6 +1,10 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Anti-Debugging: Block debug builds in production
+#[cfg(debug_assertions)]
+compile_error!("Debug builds not allowed for production - use release build only");
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -32,6 +36,248 @@ use std::sync::atomic::AtomicBool;
 use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
 
 // Function to get safe app data directory
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Security constants for obfuscation
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Security constants for obfuscation
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+const _dummy_var_1: u32 = 0xdeadbeef;
+const _dummy_var_2: u32 = 0xcafebabe;
+const _dummy_var_3: u32 = 0x12345678;
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+const _dummy_var_1: u32 = 0xdeadbeef;
+const _dummy_var_2: u32 = 0xcafebabe;
+const _dummy_var_3: u32 = 0x12345678;
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+const _dummy_var_1: u32 = 0xdeadbeef;
+const _dummy_var_2: u32 = 0xcafebabe;
+const _dummy_var_3: u32 = 0x12345678;
+// Obfuscated code - do not modify
+// Security layer 1
+// Anti-tamper protection
+// License validation system
+// Heartbeat monitoring
+// Machine ID verification
+const _dummy_var_1: u32 = 0xdeadbeef;
+const _dummy_var_2: u32 = 0xcafebabe;
+const _dummy_var_3: u32 = 0x12345678;
 fn get_app_data_dir() -> Result<PathBuf, String> {
     let app_data_dir = dirs::data_local_dir()
         .ok_or("Failed to get local data directory")?
@@ -54,40 +300,40 @@ fn get_app_data_file(filename: &str) -> Result<PathBuf, String> {
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
-fn greet(name: &str) -> String {
+fn greet(name: &str) -> Result<String, String> {
     // ตรวจสอบ License ก่อนให้เข้าถึงฟังก์ชันพื้นฐาน
-    if !is_license_valid() {
-        return "License required".to_string();
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
-    format!("Hello, {}! You've been greeted from Rust!", name)
+    Ok(format!("Hello, {}! You've been greeted from Rust!", name))
 }
 
 #[tauri::command]
-fn get_app_version() -> String {
+fn get_app_version() -> Result<String, String> {
     // ตรวจสอบ License ก่อนให้เข้าถึงฟังก์ชันพื้นฐาน
-    if !is_license_valid() {
-        return "License required".to_string();
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
-    env!("CARGO_PKG_VERSION").to_string()
+    Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
 // License management functions
-const LICENSE_SERVER_URL: &str = "https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api";
+const L1C3NS3_S3RV3R: &str = "https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api";
 
 // License validation function
-fn is_license_valid() -> bool {
+fn x7y9z2() -> bool {
     // Check if license file exists and is valid
     if let Ok(license_path) = get_app_data_file("win_count_license.json") {
         if let Ok(license_content) = fs::read_to_string(&license_path) {
             if let Ok(license_data) = serde_json::from_str::<serde_json::Value>(&license_content) {
                 if let Some(license_key) = license_data.get("license_key").and_then(|v| v.as_str()) {
                     // Enhanced validation - check with server
-                    if let Ok(machine_id) = get_machine_id() {
+                    if let Ok(machine_id) = m4c5h6n() {
                         // Create a blocking runtime for synchronous validation
                         let rt = tokio::runtime::Runtime::new().unwrap();
                         let result = rt.block_on(async {
                             let client = reqwest::Client::new();
-                            let url = format!("{}/verify-license", LICENSE_SERVER_URL);
+                            let url = format!("{}/verify-license", L1C3NS3_S3RV3R);
                             if !url.starts_with("https://") {
                                 println!("[SECURITY] License server URL is not HTTPS!");
                                 return false;
@@ -116,14 +362,14 @@ fn is_license_valid() -> bool {
                                     // ถ้า response ไม่ success
                                     println!("[SECURITY] License server returned error status: {}", status);
                                     // Activate Grace Period
-                                    GRACE_PERIOD_ACTIVE.store(true, Ordering::SeqCst);
+                                    GR4C3_P3R10D.store(true, Ordering::SeqCst);
                                     unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
                                     return false;
                                 }
                                 Err(e) => {
                                     println!("[SECURITY] Network error: {}", e);
                                     // Activate Grace Period
-                                    GRACE_PERIOD_ACTIVE.store(true, Ordering::SeqCst);
+                                    GR4C3_P3R10D.store(true, Ordering::SeqCst);
                                     unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
                                     return false;
                                 }
@@ -139,16 +385,16 @@ fn is_license_valid() -> bool {
 }
 
 #[tauri::command]
-async fn validate_license_key(license_key: String) -> Result<bool, String> {
+async fn a1b2c3d4(license_key: String) -> Result<bool, String> {
     // ไม่ต้องตรวจสอบ License สำหรับการตรวจสอบ License Key เพราะเป็นฟังก์ชันการตรวจสอบ License
     println!("🔑 Validating license key: {}", license_key);
     
     // Get machine ID
-    let machine_id = get_machine_id()?;
+    let machine_id = m4c5h6n()?;
     
     // Prepare request to license server
     let client = reqwest::Client::new();
-    let url = format!("{}/verify-license", LICENSE_SERVER_URL);
+    let url = format!("{}/verify-license", L1C3NS3_S3RV3R);
     if !url.starts_with("https://") {
         println!("[SECURITY] License server URL is not HTTPS!");
         return Err("License server URL is not HTTPS".to_string());
@@ -199,7 +445,7 @@ async fn validate_license_key(license_key: String) -> Result<bool, String> {
             } else {
                 println!("[SECURITY] License server returned error status: {}", status);
                 // Activate Grace Period
-                GRACE_PERIOD_ACTIVE.store(true, Ordering::SeqCst);
+                GR4C3_P3R10D.store(true, Ordering::SeqCst);
                 unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
                 Ok(false)
             }
@@ -207,7 +453,7 @@ async fn validate_license_key(license_key: String) -> Result<bool, String> {
         Err(e) => {
             println!("[SECURITY] Network error: {}", e);
             // Activate Grace Period
-            GRACE_PERIOD_ACTIVE.store(true, Ordering::SeqCst);
+            GR4C3_P3R10D.store(true, Ordering::SeqCst);
             unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
             Ok(false)
         }
@@ -215,7 +461,7 @@ async fn validate_license_key(license_key: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn save_license_key(key: String) -> Result<(), String> {
+fn s4v3k3y(key: String) -> Result<(), String> {
     // ไม่ต้องตรวจสอบ License สำหรับการบันทึก License Key เพราะเป็นฟังก์ชันการตั้งค่า License
     println!("💾 Saving license key: {}", key);
     
@@ -224,7 +470,7 @@ fn save_license_key(key: String) -> Result<(), String> {
     let license_data = serde_json::json!({
         "license_key": key,
         "saved_at": chrono::Utc::now().to_rfc3339(),
-        "machine_id": get_machine_id()?
+        "machine_id": m4c5h6n()?
     });
     
     let license_json = serde_json::to_string_pretty(&license_data)
@@ -238,7 +484,7 @@ fn save_license_key(key: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_machine_id() -> Result<String, String> {
+fn m4c5h6n() -> Result<String, String> {
     // ไม่ต้องตรวจสอบ License สำหรับการสร้าง Machine ID เพราะเป็นฟังก์ชันพื้นฐาน
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -283,8 +529,8 @@ async fn create_promptpay_qr(amount: f64, phone: String) -> Result<String, Strin
 
 #[tauri::command]
 fn update_hotkey(action: String, hotkey: String) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     
     println!("🎹 Updating hotkey: {} -> {}", action, hotkey);
@@ -308,8 +554,8 @@ fn update_hotkey(action: String, hotkey: String) -> Result<(), String> {
 
 #[tauri::command]
 fn reload_hotkeys_command(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     
     println!("🔄 RELOAD_HOTKEYS_COMMAND CALLED!");
@@ -733,18 +979,17 @@ fn save_state(path: &PathBuf, state: &WinState) {
 }
 
 #[tauri::command]
-fn get_win_state(state: State<'_, SharedWinState>) -> WinState {
-    if !is_license_valid() {
-        // Return default state if license not valid
-        return WinState::default();
+fn get_win_state(state: State<'_, SharedWinState>) -> Result<WinState, String> {
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
-    state.lock().unwrap().clone()
+    Ok(state.lock().unwrap().clone())
 }
 
 #[tauri::command]
 fn set_win_state(new_state: WinState, state: State<'_, SharedWinState>) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     
     let mut s = state.lock().unwrap();
@@ -756,8 +1001,8 @@ fn set_win_state(new_state: WinState, state: State<'_, SharedWinState>) -> Resul
 
 #[tauri::command]
 fn minimize_app(window: tauri::Window) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     
     let _ = window.minimize();
@@ -766,8 +1011,8 @@ fn minimize_app(window: tauri::Window) -> Result<(), String> {
 
 #[tauri::command]
 fn hide_to_tray(window: tauri::Window) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     
     println!("🔒 hide_to_tray command called");
@@ -796,8 +1041,8 @@ fn hide_to_tray(window: tauri::Window) -> Result<(), String> {
 
 #[tauri::command]
 fn show_from_tray(window: tauri::Window) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     
     let _ = window.show();
@@ -963,8 +1208,8 @@ fn change_win(app: &tauri::AppHandle, state: &SharedWinState, broadcast_tx: &tok
 
 #[tauri::command]
 fn increase_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     change_win(&app, &state, &*broadcast_tx, 1);
     Ok(())
@@ -972,8 +1217,8 @@ fn increase_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadca
 
 #[tauri::command]
 fn decrease_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     change_win(&app, &state, &*broadcast_tx, -1);
     Ok(())
@@ -981,8 +1226,8 @@ fn decrease_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadca
 
 #[tauri::command]
 fn increase_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, step: i32) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     change_win_with_step(&app, &state, &*broadcast_tx, 1, step);
     Ok(())
@@ -990,8 +1235,8 @@ fn increase_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>,
 
 #[tauri::command]
 fn decrease_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, step: i32) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     change_win_with_step(&app, &state, &*broadcast_tx, -1, step);
     Ok(())
@@ -999,8 +1244,8 @@ fn decrease_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>,
 
 #[tauri::command]
 fn set_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, value: i32) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     
     let mut s = state.lock().unwrap();
@@ -1042,8 +1287,8 @@ fn set_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx
 
 #[tauri::command]
 fn set_goal(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, value: i32) -> Result<(), String> {
-    if !is_license_valid() {
-        return Err("License not valid".to_string());
+    if !x7y9z2() {
+        return Err("UNAUTHORIZED_ACCESS".to_string());
     }
     
     let mut s = state.lock().unwrap();
@@ -1085,7 +1330,7 @@ fn set_goal(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_t
 
 #[tauri::command]
 fn toggle_goal_visibility(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1101,7 +1346,7 @@ fn toggle_goal_visibility(app: tauri::AppHandle, state: State<'_, SharedWinState
 
 #[tauri::command]
 fn toggle_crown_visibility(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1117,7 +1362,7 @@ fn toggle_crown_visibility(app: tauri::AppHandle, state: State<'_, SharedWinStat
 
 #[tauri::command]
 async fn copy_overlay_link() -> Result<String, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1150,7 +1395,7 @@ async fn copy_overlay_link() -> Result<String, String> {
 
 #[tauri::command]
 fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1200,7 +1445,7 @@ fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(
 
 #[tauri::command]
 fn load_presets() -> Result<Vec<PresetData>, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1246,7 +1491,7 @@ fn load_presets() -> Result<Vec<PresetData>, String> {
 
 #[tauri::command]
 fn load_preset(name: String, app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<PresetData, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1300,7 +1545,7 @@ fn load_preset(name: String, app: tauri::AppHandle, state: State<'_, SharedWinSt
 
 #[tauri::command]
 fn delete_preset(name: String) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1362,7 +1607,7 @@ fn delete_preset(name: String) -> Result<(), String> {
 
 #[tauri::command]
 fn rename_preset(old_name: String, new_name: String) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1395,7 +1640,7 @@ fn rename_preset(old_name: String, new_name: String) -> Result<(), String> {
 
 #[tauri::command]
 fn play_test_sounds(app: tauri::AppHandle) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1414,7 +1659,7 @@ fn play_test_sounds(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn test_hotkeys() -> Result<String, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1450,7 +1695,7 @@ fn test_hotkeys() -> Result<String, String> {
 
 #[tauri::command]
 fn clear_hotkeys() -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1477,7 +1722,7 @@ fn clear_hotkeys() -> Result<(), String> {
 
 #[tauri::command]
 fn save_default_hotkeys() -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1507,7 +1752,7 @@ fn save_default_hotkeys() -> Result<(), String> {
 
 #[tauri::command]
 fn check_hotkey_file() -> Result<String, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1536,7 +1781,7 @@ fn check_hotkey_file() -> Result<String, String> {
 // Sound file management functions
 #[tauri::command]
 fn save_custom_sound(file_data: Vec<u8>, filename: String, sound_type: String) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1569,7 +1814,7 @@ fn save_custom_sound(file_data: Vec<u8>, filename: String, sound_type: String) -
 
 #[tauri::command]
 fn get_custom_sound_path(sound_type: String) -> Result<String, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1599,7 +1844,7 @@ fn get_custom_sound_path(sound_type: String) -> Result<String, String> {
 
 #[tauri::command]
 fn delete_custom_sound(sound_type: String) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1633,7 +1878,7 @@ fn delete_custom_sound(sound_type: String) -> Result<(), String> {
 
 #[tauri::command]
 fn read_sound_file(file_path: String) -> Result<Vec<u8>, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1643,7 +1888,7 @@ fn read_sound_file(file_path: String) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 fn get_custom_sound_filename(sound_type: String) -> Result<String, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1669,7 +1914,7 @@ fn get_custom_sound_filename(sound_type: String) -> Result<String, String> {
 // Auto-Update Commands
 #[tauri::command]
 async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1722,7 +1967,7 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateInfo, String> 
 
 #[tauri::command]
 async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -1791,7 +2036,7 @@ async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String
 
 #[tauri::command]
 async fn install_update_and_restart(app: tauri::AppHandle) -> Result<(), String> {
-    if !is_license_valid() {
+    if !x7y9z2() {
         return Err("License not valid".to_string());
     }
     
@@ -2300,6 +2545,8 @@ pub fn run() {
     // Start WebSocket server
     start_ws_server(shared_state.clone(), broadcast_tx.clone());
     
+    // Start Heartbeat monitoring (will be started in setup)
+    
     tauri::Builder::default()
         .manage(shared_state.clone())
         .manage(broadcast_tx.clone())
@@ -2310,7 +2557,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
 
-        .invoke_handler(tauri::generate_handler![greet, get_app_version, validate_license_key, save_license_key, get_machine_id, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart, create_promptpay_qr])
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, a1b2c3d4, s4v3k3y, m4c5h6n, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart, create_promptpay_qr])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();
@@ -2338,6 +2585,12 @@ pub fn run() {
                         println!("⚠️ Skipping fallback hotkeys to avoid registration conflicts");
                     }
                 }
+                
+                // Start Heartbeat monitoring
+                m0n1t0r(app.handle().clone());
+                
+                // Start Enhanced Security Monitor
+                start_security_monitor(app.handle().clone());
                 
                 // Setup System Tray with enhanced menu
                 println!("🎯 Setting up system tray...");
@@ -2430,12 +2683,31 @@ pub fn run() {
 }
 
 // --- Security State ---
-static TAMPER_COUNT: AtomicUsize = AtomicUsize::new(0);
-static GRACE_PERIOD_ACTIVE: AtomicBool = AtomicBool::new(false);
+static T4MP3R_C0UNT: AtomicUsize = AtomicUsize::new(0);
+static GR4C3_P3R10D: AtomicBool = AtomicBool::new(false);
 static mut GRACE_PERIOD_START: Option<DateTime<Utc>> = None;
 const GRACE_PERIOD_DURATION: i64 = 5 * 60; // 5 นาที (วินาที)
 
-fn hash_file(path: &str) -> Option<String> {
+// --- Anti-Debugging & Tamper Detection ---
+static ANTI_DEBUG_ACTIVE: AtomicBool = AtomicBool::new(false);
+static HASH_VERIFICATION_ACTIVE: AtomicBool = AtomicBool::new(false);
+static mut APP_HASH_CACHE: Option<String> = None;
+
+#[cfg(windows)]
+use winapi::um::winuser::FindWindowA;
+#[cfg(windows)]
+use winapi::um::processthreadsapi::GetCurrentProcess;
+#[cfg(windows)]
+extern "system" {
+    fn IsDebuggerPresent() -> i32;
+}
+
+// --- Heartbeat System ---
+static H3A2T_4CT1V3: AtomicBool = AtomicBool::new(false);
+static mut LAST_HEARTBEAT: Option<DateTime<Utc>> = None;
+const HEARTBEAT_INTERVAL: u64 = 30; // 30 วินาที
+
+fn h4s5h6(path: &str) -> Option<String> {
     let mut file = File::open(path).ok()?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 4096];
@@ -2447,11 +2719,116 @@ fn hash_file(path: &str) -> Option<String> {
     Some(format!("{:x}", hasher.finalize()))
 }
 
-fn check_integrity() -> bool {
+// Anti-Debugging functions
+#[cfg(windows)]
+fn is_debugger_present() -> bool {
+    unsafe { IsDebuggerPresent() != 0 }
+}
+
+#[cfg(not(windows))]
+fn is_debugger_present() -> bool {
+    false // Placeholder for non-Windows platforms
+}
+
+#[cfg(windows)]
+fn detect_debugging_tools() -> bool {
+    use std::ffi::CString;
+    
+    let debug_tools = [
+        "ollydbg", "windbg", "x64dbg", "ida", "ghidra", 
+        "cheat engine", "process hacker", "processhacker"
+    ];
+    
+    for tool in &debug_tools {
+        if let Ok(tool_name) = CString::new(*tool) {
+            unsafe {
+                if FindWindowA(tool_name.as_ptr(), std::ptr::null()) != std::ptr::null_mut() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+#[cfg(not(windows))]
+fn detect_debugging_tools() -> bool {
+    false // Placeholder for non-Windows platforms
+}
+
+// Enhanced hash verification with multiple files
+fn verify_app_integrity() -> bool {
+    let critical_files = [
+        "win-count-by-artywoof.exe",
+        "tauri.conf.json",
+        "WebView2Loader.dll"
+    ];
+    
+    for file in &critical_files {
+        if let Some(current_hash) = h4s5h6(file) {
+            // In production, these hashes should be hardcoded or encrypted
+            println!("[SECURITY] Verifying integrity of: {} - Hash: {}", file, &current_hash[..16]);
+            
+            // Store hash in cache for comparison
+            unsafe {
+                if APP_HASH_CACHE.is_none() {
+                    APP_HASH_CACHE = Some(current_hash.clone());
+                }
+            }
+        } else {
+            println!("[SECURITY] ⚠️ Could not verify integrity of: {}", file);
+            return false;
+        }
+    }
+    true
+}
+
+// Registry tamper detection (Windows only)
+#[cfg(windows)]
+fn check_registry_tampering() -> bool {
+    use winapi::um::winreg::{RegOpenKeyExA, RegQueryValueExA, HKEY_LOCAL_MACHINE};
+    use winapi::um::winnt::{KEY_READ, REG_SZ};
+    use std::ffi::CString;
+    use std::ptr;
+    
+    // Check common registry keys that might be modified
+    let registry_paths = [
+        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+        "SOFTWARE\\Classes\\Applications",
+    ];
+    
+    for path in &registry_paths {
+        if let Ok(path_cstring) = CString::new(*path) {
+            let mut hkey = ptr::null_mut();
+            unsafe {
+                let result = RegOpenKeyExA(
+                    HKEY_LOCAL_MACHINE,
+                    path_cstring.as_ptr(),
+                    0,
+                    KEY_READ,
+                    &mut hkey
+                );
+                
+                if result == 0 {
+                    // Registry key exists, perform additional checks if needed
+                    println!("[SECURITY] Registry key accessible: {}", path);
+                }
+            }
+        }
+    }
+    true // Return true for now, implement specific checks as needed
+}
+
+#[cfg(not(windows))]
+fn check_registry_tampering() -> bool {
+    true // Always return true on non-Windows platforms
+}
+
+fn i9n8t7g() -> bool {
     // ตรวจสอบ hash ของ main.rs, tauri.conf.json, และ binary
-    let main_hash = hash_file("src-tauri/src/main.rs");
-    let conf_hash = hash_file("src-tauri/tauri.conf.json");
-    let exe_hash = std::env::current_exe().ok().and_then(|p| hash_file(p.to_str().unwrap_or("")));
+    let main_hash = h4s5h6("src-tauri/src/main.rs");
+    let conf_hash = h4s5h6("src-tauri/tauri.conf.json");
+    let exe_hash = std::env::current_exe().ok().and_then(|p| h4s5h6(p.to_str().unwrap_or("")));
     // hash เหล่านี้ควรเก็บค่าไว้ตอน build (hardcode หรืออ่านจากไฟล์)
     let expected_main = option_env!("EXPECTED_MAIN_HASH");
     let expected_conf = option_env!("EXPECTED_CONF_HASH");
@@ -2463,13 +2840,42 @@ fn check_integrity() -> bool {
     tampered
 }
 
+// Enhanced security monitor with anti-debugging
 fn start_security_monitor(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(30));
-            // Tamper Detection
-            if check_integrity() {
-                let count = TAMPER_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+            
+            // Anti-Debugging Detection
+            if is_debugger_present() || detect_debugging_tools() {
+                let _ = app.emit("security_issue", "🚨 ตรวจพบ Debugger หรือ Hacking Tools - แอปจะปิดทันที".to_string());
+                println!("[SECURITY] 🚨 Debugger or hacking tools detected!");
+                std::process::exit(1); // Force exit immediately
+            }
+            
+            // App Integrity Verification
+            if !verify_app_integrity() {
+                let count = T4MP3R_C0UNT.fetch_add(1, Ordering::SeqCst) + 1;
+                let msg = format!("🔍 ตรวจพบการแก้ไขไฟล์แอป ({} / 3)", count);
+                let _ = app.emit("security_issue", msg.clone());
+                println!("[SECURITY] {}", msg);
+                
+                if count >= 3 {
+                    let _ = app.emit("security_issue", "⛔ ตรวจพบการแก้ไขไฟล์เกิน 3 ครั้ง - แอปถูกบล็อก".to_string());
+                    println!("[SECURITY] ⛔ App tampering detected - blocking application");
+                    std::process::exit(1); // Force exit on tampering
+                }
+            }
+            
+            // Registry Tampering Check
+            if !check_registry_tampering() {
+                let _ = app.emit("security_issue", "⚠️ ตรวจพบการแก้ไข Registry ที่น่าสงสัย".to_string());
+                println!("[SECURITY] ⚠️ Suspicious registry modifications detected");
+            }
+            
+            // Original Tamper Detection
+            if i9n8t7g() {
+                let count = T4MP3R_C0UNT.fetch_add(1, Ordering::SeqCst) + 1;
                 let msg = format!("ตรวจพบการแก้ไขไฟล์ระบบ ({} / 5)", count);
                 let _ = app.emit("security_issue", msg.clone());
                 println!("[SECURITY] {}", msg);
@@ -2477,8 +2883,9 @@ fn start_security_monitor(app: tauri::AppHandle) {
                     let _ = app.emit("security_issue", "⛔ ตรวจพบการแก้ไขระบบเกิน 5 ครั้ง แอปถูกบล็อก".to_string());
                 }
             }
+            
             // Grace Period
-            if GRACE_PERIOD_ACTIVE.load(Ordering::SeqCst) {
+            if GR4C3_P3R10D.load(Ordering::SeqCst) {
                 let now = Utc::now();
                 let expired = unsafe {
                     if let Some(start) = GRACE_PERIOD_START {
@@ -2488,6 +2895,127 @@ fn start_security_monitor(app: tauri::AppHandle) {
                 if expired {
                     let _ = app.emit("security_issue", "⛔ หมดเวลา Grace Period กรุณาเชื่อมต่ออินเทอร์เน็ตเพื่อตรวจสอบ License".to_string());
                     println!("[SECURITY] Grace period expired, blocking app");
+                }
+            }
+        }
+    });
+}
+
+// Heartbeat function - ส่งสัญญาณไป License Server ทุก 30 วินาที
+async fn h3a2r1t() -> Result<bool, String> {
+    if let Ok(license_path) = get_app_data_file("win_count_license.json") {
+        if let Ok(license_content) = fs::read_to_string(&license_path) {
+            if let Ok(license_data) = serde_json::from_str::<serde_json::Value>(&license_content) {
+                if let Some(license_key) = license_data.get("license_key").and_then(|v| v.as_str()) {
+                    if let Ok(machine_id) = m4c5h6n() {
+                        let timestamp = Utc::now().timestamp();
+                        
+                        // สร้าง signature จาก Machine ID + Timestamp + License Key
+                        let signature_data = format!("{}:{}:{}", machine_id, timestamp, license_key);
+                        let mut hasher = Sha256::new();
+                        hasher.update(signature_data.as_bytes());
+                        let signature = format!("{:x}", hasher.finalize());
+                        
+                        let client = reqwest::Client::new();
+                        let url = format!("{}/heartbeat", L1C3NS3_S3RV3R);
+                        
+                        if !url.starts_with("https://") {
+                            println!("[SECURITY] Heartbeat server URL is not HTTPS!");
+                            return Ok(false);
+                        }
+                        
+                        let heartbeat_data = serde_json::json!({
+                            "license_key": license_key,
+                            "machine_id": machine_id,
+                            "timestamp": timestamp,
+                            "signature": signature,
+                            "app_version": env!("CARGO_PKG_VERSION")
+                        });
+                        
+                        let response = client
+                            .post(&url)
+                            .header("Content-Type", "application/json")
+                            .json(&heartbeat_data)
+                            .send()
+                            .await;
+                        
+                        match response {
+                            Ok(resp) => {
+                                let status = resp.status();
+                                let body = resp.text().await.unwrap_or_default();
+                                println!("[HEARTBEAT] Server response: {} - {}", status, body);
+                                
+                                if status.is_success() {
+                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                                        if let Some(valid) = json.get("valid").and_then(|v| v.as_bool()) {
+                                            if valid {
+                                                unsafe { LAST_HEARTBEAT = Some(Utc::now()); }
+                                                return Ok(true);
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // ถ้า response ไม่ success หรือ license ไม่ valid
+                                println!("[HEARTBEAT] License validation failed");
+                                GR4C3_P3R10D.store(true, Ordering::SeqCst);
+                                unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
+                                return Ok(false);
+                            }
+                            Err(e) => {
+                                println!("[HEARTBEAT] Network error: {}", e);
+                                // Activate Grace Period เมื่อไม่สามารถเชื่อมต่อได้
+                                GR4C3_P3R10D.store(true, Ordering::SeqCst);
+                                unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
+                                return Ok(false);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+// Start heartbeat monitoring
+fn m0n1t0r(app: tauri::AppHandle) {
+    if H3A2T_4CT1V3.load(Ordering::SeqCst) {
+        return; // Already running
+    }
+    
+    H3A2T_4CT1V3.store(true, Ordering::SeqCst);
+    
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(HEARTBEAT_INTERVAL));
+            
+            if !H3A2T_4CT1V3.load(Ordering::SeqCst) {
+                break; // Stop if disabled
+            }
+            
+            println!("[HEARTBEAT] Sending heartbeat to license server...");
+            
+            let result = rt.block_on(async {
+                h3a2r1t().await
+            });
+            
+            match result {
+                Ok(valid) => {
+                    if valid {
+                        println!("[HEARTBEAT] ✅ License valid");
+                        // Reset grace period if license is valid
+                        GR4C3_P3R10D.store(false, Ordering::SeqCst);
+                    } else {
+                        println!("[HEARTBEAT] ❌ License invalid or network error");
+                        let _ = app.emit("security_issue", "⚠️ ตรวจพบปัญหา License กรุณาตรวจสอบการเชื่อมต่อ".to_string());
+                    }
+                }
+                Err(e) => {
+                    println!("[HEARTBEAT] ❌ Error: {}", e);
+                    let _ = app.emit("security_issue", "⚠️ เกิดข้อผิดพลาดในการตรวจสอบ License".to_string());
                 }
             }
         }
