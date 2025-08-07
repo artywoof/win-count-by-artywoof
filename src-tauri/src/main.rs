@@ -17,7 +17,12 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::accept_async;
 use serde_json;
 use std::env;
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
+use chrono::{Utc, DateTime};
+use std::fs::File;
+use std::io::{Read};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicBool;
 
 // PromptPay module removed - using promptpay.io instead
 
@@ -50,13 +55,19 @@ fn get_app_data_file(filename: &str) -> Result<PathBuf, String> {
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
-    // ไม่ต้องตรวจสอบ License สำหรับการทักทาย เพราะเป็นฟังก์ชันพื้นฐาน
+    // ตรวจสอบ License ก่อนให้เข้าถึงฟังก์ชันพื้นฐาน
+    if !is_license_valid() {
+        return "License required".to_string();
+    }
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
 #[tauri::command]
 fn get_app_version() -> String {
-    // ไม่ต้องตรวจสอบ License สำหรับการดึงเวอร์ชันแอพ เพราะเป็นฟังก์ชันพื้นฐาน
+    // ตรวจสอบ License ก่อนให้เข้าถึงฟังก์ชันพื้นฐาน
+    if !is_license_valid() {
+        return "License required".to_string();
+    }
     env!("CARGO_PKG_VERSION").to_string()
 }
 
@@ -70,8 +81,56 @@ fn is_license_valid() -> bool {
         if let Ok(license_content) = fs::read_to_string(&license_path) {
             if let Ok(license_data) = serde_json::from_str::<serde_json::Value>(&license_content) {
                 if let Some(license_key) = license_data.get("license_key").and_then(|v| v.as_str()) {
-                    // Basic validation - in production, this should check with server
-                    return !license_key.is_empty();
+                    // Enhanced validation - check with server
+                    if let Ok(machine_id) = get_machine_id() {
+                        // Create a blocking runtime for synchronous validation
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let result = rt.block_on(async {
+                            let client = reqwest::Client::new();
+                            let url = format!("{}/verify-license", LICENSE_SERVER_URL);
+                            if !url.starts_with("https://") {
+                                println!("[SECURITY] License server URL is not HTTPS!");
+                                return false;
+                            }
+                            let response = client
+                                .post(&url)
+                                .header("Content-Type", "application/json")
+                                .body(format!(
+                                    r#"{{\"license_key\":\"{}\",\"machine_id\":\"{}\"}}"#,
+                                    license_key, machine_id
+                                ))
+                                .send()
+                                .await;
+                            match response {
+                                Ok(resp) => {
+                                    let status = resp.status();
+                                    let body = resp.text().await.unwrap_or_default();
+                                    println!("[SECURITY] License server response: {} - {}", status, body);
+                                    if status.is_success() {
+                                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                                            if let Some(success) = json.get("success").and_then(|v| v.as_bool()) {
+                                                return success;
+                                            }
+                                        }
+                                    }
+                                    // ถ้า response ไม่ success
+                                    println!("[SECURITY] License server returned error status: {}", status);
+                                    // Activate Grace Period
+                                    GRACE_PERIOD_ACTIVE.store(true, Ordering::SeqCst);
+                                    unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
+                                    return false;
+                                }
+                                Err(e) => {
+                                    println!("[SECURITY] Network error: {}", e);
+                                    // Activate Grace Period
+                                    GRACE_PERIOD_ACTIVE.store(true, Ordering::SeqCst);
+                                    unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
+                                    return false;
+                                }
+                            }
+                        });
+                        return result;
+                    }
                 }
             }
         }
@@ -89,54 +148,69 @@ async fn validate_license_key(license_key: String) -> Result<bool, String> {
     
     // Prepare request to license server
     let client = reqwest::Client::new();
+    let url = format!("{}/verify-license", LICENSE_SERVER_URL);
+    if !url.starts_with("https://") {
+        println!("[SECURITY] License server URL is not HTTPS!");
+        return Err("License server URL is not HTTPS".to_string());
+    }
     let response = client
-        .post(&format!("{}/verify-license", LICENSE_SERVER_URL))
+        .post(&url)
         .header("Content-Type", "application/json")
         .body(format!(
-            r#"{{"license_key":"{}","machine_id":"{}"}}"#,
+            r#"{{\"license_key\":\"{}\",\"machine_id\":\"{}\"}}"#,
             license_key, machine_id
         ))
         .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+        .await;
     
-    let status = response.status();
-    let body = response.text().await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-    
-    println!("🔑 License server response: {} - {}", status, body);
-    
-    if status.is_success() {
-        // Parse response to check if license is valid
-        match serde_json::from_str::<serde_json::Value>(&body) {
-            Ok(json) => {
-                // Check for success field first
-                if let Some(success) = json.get("success").and_then(|v| v.as_bool()) {
-                    Ok(success)
-                } else if let Some(valid) = json.get("valid").and_then(|v| v.as_bool()) {
-                    // Fallback to "valid" field
-                    Ok(valid)
-                } else if let Some(status) = json.get("status").and_then(|v| v.as_str()) {
-                    // Check status field
-                    Ok(status == "valid" || status == "success")
-                } else {
-                    // If no clear success indicator, check if response contains positive indicators
-                    let body_lower = body.to_lowercase();
-                    if body_lower.contains("valid") || body_lower.contains("success") || body_lower.contains("true") {
-                        Ok(true)
-                    } else {
+    match response {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            println!("[SECURITY] License server response: {} - {}", status, body);
+            if status.is_success() {
+                // Parse response to check if license is valid
+                match serde_json::from_str::<serde_json::Value>(&body) {
+                    Ok(json) => {
+                        // Check for success field first
+                        if let Some(success) = json.get("success").and_then(|v| v.as_bool()) {
+                            Ok(success)
+                        } else if let Some(valid) = json.get("valid").and_then(|v| v.as_bool()) {
+                            // Fallback to "valid" field
+                            Ok(valid)
+                        } else if let Some(status) = json.get("status").and_then(|v| v.as_str()) {
+                            // Check status field
+                            Ok(status == "valid" || status == "success")
+                        } else {
+                            // If no clear success indicator, check if response contains positive indicators
+                            let body_lower = body.to_lowercase();
+                            if body_lower.contains("valid") || body_lower.contains("success") || body_lower.contains("true") {
+                                Ok(true)
+                            } else {
+                                Ok(false)
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("❌ Failed to parse JSON response: {}", e);
                         Ok(false)
                     }
                 }
-            }
-            Err(e) => {
-                println!("❌ Failed to parse JSON response: {}", e);
+            } else {
+                println!("[SECURITY] License server returned error status: {}", status);
+                // Activate Grace Period
+                GRACE_PERIOD_ACTIVE.store(true, Ordering::SeqCst);
+                unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
                 Ok(false)
             }
         }
-    } else {
-        println!("❌ License server returned error status: {}", status);
-        Ok(false)
+        Err(e) => {
+            println!("[SECURITY] Network error: {}", e);
+            // Activate Grace Period
+            GRACE_PERIOD_ACTIVE.store(true, Ordering::SeqCst);
+            unsafe { GRACE_PERIOD_START = Some(Utc::now()); }
+            Ok(false)
+        }
     }
 }
 
@@ -2353,5 +2427,70 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// --- Security State ---
+static TAMPER_COUNT: AtomicUsize = AtomicUsize::new(0);
+static GRACE_PERIOD_ACTIVE: AtomicBool = AtomicBool::new(false);
+static mut GRACE_PERIOD_START: Option<DateTime<Utc>> = None;
+const GRACE_PERIOD_DURATION: i64 = 5 * 60; // 5 นาที (วินาที)
+
+fn hash_file(path: &str) -> Option<String> {
+    let mut file = File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 4096];
+    loop {
+        let n = file.read(&mut buffer).ok()?;
+        if n == 0 { break; }
+        hasher.update(&buffer[..n]);
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+fn check_integrity() -> bool {
+    // ตรวจสอบ hash ของ main.rs, tauri.conf.json, และ binary
+    let main_hash = hash_file("src-tauri/src/main.rs");
+    let conf_hash = hash_file("src-tauri/tauri.conf.json");
+    let exe_hash = std::env::current_exe().ok().and_then(|p| hash_file(p.to_str().unwrap_or("")));
+    // hash เหล่านี้ควรเก็บค่าไว้ตอน build (hardcode หรืออ่านจากไฟล์)
+    let expected_main = option_env!("EXPECTED_MAIN_HASH");
+    let expected_conf = option_env!("EXPECTED_CONF_HASH");
+    let expected_exe = option_env!("EXPECTED_EXE_HASH");
+    let mut tampered = false;
+    if let (Some(h), Some(e)) = (main_hash, expected_main) { if h != e { tampered = true; } }
+    if let (Some(h), Some(e)) = (conf_hash, expected_conf) { if h != e { tampered = true; } }
+    if let (Some(h), Some(e)) = (exe_hash, expected_exe) { if h != e { tampered = true; } }
+    tampered
+}
+
+fn start_security_monitor(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            // Tamper Detection
+            if check_integrity() {
+                let count = TAMPER_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+                let msg = format!("ตรวจพบการแก้ไขไฟล์ระบบ ({} / 5)", count);
+                let _ = app.emit("security_issue", msg.clone());
+                println!("[SECURITY] {}", msg);
+                if count >= 5 {
+                    let _ = app.emit("security_issue", "⛔ ตรวจพบการแก้ไขระบบเกิน 5 ครั้ง แอปถูกบล็อก".to_string());
+                }
+            }
+            // Grace Period
+            if GRACE_PERIOD_ACTIVE.load(Ordering::SeqCst) {
+                let now = Utc::now();
+                let expired = unsafe {
+                    if let Some(start) = GRACE_PERIOD_START {
+                        (now - start).num_seconds() > GRACE_PERIOD_DURATION
+                    } else { false }
+                };
+                if expired {
+                    let _ = app.emit("security_issue", "⛔ หมดเวลา Grace Period กรุณาเชื่อมต่ออินเทอร์เน็ตเพื่อตรวจสอบ License".to_string());
+                    println!("[SECURITY] Grace period expired, blocking app");
+                }
+            }
+        }
+    });
 }
 

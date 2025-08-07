@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Win Count - Admin Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #ff6b6b, #4ecdc4);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #74b9ff, #0984e3);
+            color: white;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #00b894, #00a085);
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        
+        .result.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .result.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .license-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .license-item {
+            padding: 15px;
+            border-bottom: 1px solid #e1e8ed;
+            background: #f8f9fa;
+        }
+        
+        .license-item:last-child {
+            border-bottom: none;
+        }
+        
+        .license-key {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        
+        .license-details {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👑 Win Count Admin Panel</h1>
+            <p>จัดการ License Key สำหรับลูกค้า</p>
+        </div>
+        
+        <div class="content">
+            <!-- สถิติ -->
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalLicenses">0</div>
+                    <div class="stat-label">License ทั้งหมด</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="activeLicenses">0</div>
+                    <div class="stat-label">License ที่ใช้งานได้</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="expiredLicenses">0</div>
+                    <div class="stat-label">License หมดอายุ</div>
+                </div>
+            </div>
+            
+            <!-- ฟอร์มเพิ่ม License -->
+            <h3>🔑 เพิ่ม License Key ใหม่</h3>
+            <form id="addLicenseForm">
+                <div class="form-group">
+                    <label for="adminKey">🔐 Admin Key:</label>
+                    <input type="password" id="adminKey" placeholder="ใส่ Admin Secret Key" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="customerEmail">📧 อีเมลลูกค้า:</label>
+                    <input type="email" id="customerEmail" placeholder="customer@example.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="machineId">🖥️ Machine ID:</label>
+                    <input type="text" id="machineId" placeholder="Machine ID ที่ลูกค้าส่งมา" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="licenseKey">🎫 License Key (เว้นว่างเพื่อสร้างอัตโนมัติ):</label>
+                    <input type="text" id="licenseKey" placeholder="จะสร้างอัตโนมัติถ้าไม่ใส่">
+                </div>
+                
+                <div class="form-group">
+                    <label for="duration">⏱️ ระยะเวลา (เดือน):</label>
+                    <input type="number" id="duration" value="1" min="1" max="12" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="notes">📝 หมายเหตุ:</label>
+                    <textarea id="notes" rows="3" placeholder="หมายเหตุการจ่ายเงิน หรือข้อมูลเพิ่มเติม"></textarea>
+                </div>
+                
+                <div class="button-group">
+                    <button type="button" class="btn btn-secondary" onclick="generateLicenseKey()">
+                        🎲 สร้าง License Key
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        ✅ เพิ่ม License
+                    </button>
+                </div>
+            </form>
+            
+            <div id="result"></div>
+            
+            <!-- ปุ่มดูสถิติ -->
+            <div class="button-group">
+                <button type="button" class="btn btn-primary" onclick="loadStats()">
+                    📊 รีเฟรชสถิติ
+                </button>
+                <button type="button" class="btn btn-primary" onclick="loadLicenses()">
+                    📋 ดู License ทั้งหมด
+                </button>
+            </div>
+            
+            <!-- รายการ License -->
+            <div id="licenseList" class="license-list" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://win-count-by-artywoof.vercel.app/api';
+        
+        // สร้าง License Key แบบสุ่ม
+        function generateLicenseKey() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const generateSegment = (length) => 
+                Array.from({length}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+            
+            const licenseKey = `WC25-${generateSegment(4)}-${generateSegment(4)}-${generateSegment(4)}`;
+            document.getElementById('licenseKey').value = licenseKey;
+        }
+        
+        // เพิ่ม License
+        document.getElementById('addLicenseForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                admin_key: document.getElementById('adminKey').value,
+                customer_email: document.getElementById('customerEmail').value,
+                machine_id: document.getElementById('machineId').value,
+                license_key: document.getElementById('licenseKey').value || generateRandomLicenseKey(),
+                duration_months: parseInt(document.getElementById('duration').value),
+                notes: document.getElementById('notes').value
+            };
+            
+            try {
+                showResult('กำลังเพิ่ม License...', 'info');
+                
+                const response = await fetch(`${API_BASE}/admin-add-license`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult(`✅ เพิ่ม License สำเร็จ!\n\nLicense Key: ${result.license_info.license_key}\nลูกค้า: ${result.license_info.customer_email}\nหมดอายุ: ${new Date(result.license_info.expires_at).toLocaleDateString('th-TH')}`, 'success');
+                    
+                    // เคลียร์ฟอร์ม
+                    document.getElementById('addLicenseForm').reset();
+                    document.getElementById('duration').value = '1';
+                    
+                    // รีเฟรชสถิติ
+                    loadStats();
+                } else {
+                    showResult(`❌ ล้มเหลว: ${result.message}`, 'error');
+                }
+                
+            } catch (error) {
+                showResult(`❌ เกิดข้อผิดพลาด: ${error.message}`, 'error');
+            }
+        });
+        
+        function generateRandomLicenseKey() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const generateSegment = (length) => 
+                Array.from({length}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+            
+            return `WC25-${generateSegment(4)}-${generateSegment(4)}-${generateSegment(4)}`;
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+            
+            if (type === 'info') {
+                setTimeout(() => {
+                    resultDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+        
+        // โหลดสถิติ
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                
+                if (data.success && data.storage) {
+                    document.getElementById('totalLicenses').textContent = data.storage.activeLicenses || 0;
+                    document.getElementById('activeLicenses').textContent = data.storage.activeLicenses || 0;
+                    document.getElementById('expiredLicenses').textContent = '0'; // TODO: คำนวณจาก API
+                }
+            } catch (error) {
+                console.error('ไม่สามารถโหลดสถิติได้:', error);
+            }
+        }
+        
+        // โหลดรายการ License (TODO: ต้องสร้าง API เพิ่ม)
+        async function loadLicenses() {
+            const listDiv = document.getElementById('licenseList');
+            listDiv.style.display = listDiv.style.display === 'none' ? 'block' : 'none';
+            
+            if (listDiv.style.display === 'block') {
+                listDiv.innerHTML = '<div style="padding: 20px; text-align: center;">📋 ต้องสร้าง API list-licenses เพิ่มเติม</div>';
+            }
+        }
+        
+        // โหลดสถิติเมื่อเริ่มต้น
+        loadStats();
+    </script>
+</body>
+</html>

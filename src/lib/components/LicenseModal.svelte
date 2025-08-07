@@ -82,6 +82,39 @@
       }, 300);
   }
 
+  // Security: Prevent any escape from license modal
+  function preventEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isLicenseValid) {
+          event.preventDefault();
+          event.stopPropagation();
+          console.log('🔒 Escape key blocked - license not valid');
+          return false;
+      }
+  }
+
+  // Security: Prevent right-click context menu
+  function preventContextMenu(event: MouseEvent) {
+      if (!isLicenseValid) {
+          event.preventDefault();
+          event.stopPropagation();
+          console.log('🔒 Right-click blocked - license not valid');
+          return false;
+      }
+  }
+
+  // Security: Prevent developer tools access
+  function preventDevTools(event: KeyboardEvent) {
+      // Block F12, Ctrl+Shift+I, Ctrl+U
+      if (event.key === 'F12' || 
+          (event.ctrlKey && event.shiftKey && event.key === 'I') ||
+          (event.ctrlKey && event.key === 'u')) {
+          event.preventDefault();
+          event.stopPropagation();
+          console.log('🔒 Developer tools access blocked');
+          return false;
+      }
+  }
+
 
   // --- ฟังก์ชัน Helper (เหมือนเดิม) ---
   async function fetchMachineId() {
@@ -158,8 +191,21 @@
 </script>
 
 {#if isOpen}
-    <div class="modal-backdrop" on:click={() => {}} on:keydown={(e) => e.key === 'Escape' && (isLicenseValid ? closeModal() : null)} role="dialog" tabindex="0">
-      <div class="modal license-modal" on:click={(e) => e.stopPropagation()} role="dialog" aria-labelledby="license-modal-title">
+    <div 
+      class="modal-backdrop" 
+      on:click={() => {}} 
+      on:keydown={preventEscape}
+      on:contextmenu={preventContextMenu}
+      role="dialog" 
+      tabindex="0"
+    >
+      <div 
+        class="modal license-modal" 
+        on:click={(e) => e.stopPropagation()} 
+        on:keydown={preventDevTools}
+        role="dialog" 
+        aria-labelledby="license-modal-title"
+      >
         <div class="modal-body">
 
         {#if $modalStep === 0}

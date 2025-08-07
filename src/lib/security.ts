@@ -1,6 +1,8 @@
 // App Security & Anti-Reverse Engineering System
 export class AppSecurity {
   private static readonly INTEGRITY_KEY = 'WIN_COUNT_INTEGRITY_CHECK';
+  private static readonly LICENSE_KEY = 'win_count_license_key';
+  private static readonly SECURITY_HASH = 'security_hash';
   
   // สร้าง Hash สำหรับตรวจสอบความถูกต้องของแอพ
   static async createAppHash(): Promise<string> {
@@ -93,6 +95,13 @@ export class AppSecurity {
     }
   }
   
+  // เพิ่ม callback สำหรับแจ้งเตือน
+  static tamperAlertCallback: ((msg: string) => void) | null = null;
+
+  static setTamperAlertCallback(cb: (msg: string) => void) {
+    this.tamperAlertCallback = cb;
+  }
+
   // ตรวจสอบการเปลี่ยนแปลงของแอพ
   static async detectTampering(): Promise<boolean> {
     try {
@@ -129,10 +138,132 @@ export class AppSecurity {
         return false; // ไม่มีการเปลี่ยนแปลง
       }
       
-      return storedState !== hashHex;
+      if (storedState !== hashHex) {
+        if (this.tamperAlertCallback) {
+          this.tamperAlertCallback('⚠️ ตรวจพบการแก้ไข DOM/Storage หรือ Session!');
+        }
+        console.warn('🚨 Tampering detected!');
+        return true;
+      }
+      
+      return false;
     } catch (error) {
       console.error('❌ Tampering detection failed:', error);
       return false;
+    }
+  }
+
+  // ระบบป้องกันการเข้าถึง localStorage โดยตรง
+  static protectLocalStorage(): void {
+    try {
+      // Override localStorage methods to add protection
+      const originalSetItem = localStorage.setItem;
+      const originalGetItem = localStorage.getItem;
+      const originalRemoveItem = localStorage.removeItem;
+      
+      localStorage.setItem = function(key: string, value: string) {
+        // Block direct access to license key
+        if (key === AppSecurity.LICENSE_KEY) {
+          console.warn('🔒 Direct license key modification blocked');
+          return;
+        }
+        return originalSetItem.call(this, key, value);
+      };
+      
+      localStorage.getItem = function(key: string) {
+        // Block direct access to license key
+        if (key === AppSecurity.LICENSE_KEY) {
+          console.warn('🔒 Direct license key access blocked');
+          return null;
+        }
+        return originalGetItem.call(this, key);
+      };
+      
+      localStorage.removeItem = function(key: string) {
+        // Block removal of license key
+        if (key === AppSecurity.LICENSE_KEY) {
+          console.warn('🔒 License key removal blocked');
+          return;
+        }
+        return originalRemoveItem.call(this, key);
+      };
+      
+      console.log('✅ localStorage protection enabled');
+    } catch (error) {
+      console.error('❌ Failed to protect localStorage:', error);
+    }
+  }
+
+  // ระบบป้องกัน Developer Tools
+  static preventDevTools(): void {
+    try {
+      // Detect developer tools
+      const devtools = {
+        open: false,
+        orientation: null
+      };
+      
+      const threshold = 160;
+      
+      setInterval(() => {
+        if (window.outerHeight - window.innerHeight > threshold || 
+            window.outerWidth - window.innerWidth > threshold) {
+          if (!devtools.open) {
+            devtools.open = true;
+            console.warn('🚨 Developer tools detected - app will be locked');
+            // Lock the app
+            window.location.reload();
+          }
+        } else {
+          devtools.open = false;
+        }
+      }, 500);
+      
+      console.log('✅ Developer tools protection enabled');
+    } catch (error) {
+      console.error('❌ Failed to prevent dev tools:', error);
+    }
+  }
+
+  // ระบบป้องกันการ Debug
+  static preventDebugging(): void {
+    try {
+      // Prevent console.log override
+      const originalLog = console.log;
+      const originalWarn = console.warn;
+      const originalError = console.error;
+      
+      console.log = function(...args) {
+        // Block suspicious console usage
+        const stack = new Error().stack;
+        if (stack && stack.includes('debugger')) {
+          console.warn('🔒 Debugging attempt detected');
+          return;
+        }
+        return originalLog.apply(this, args);
+      };
+      
+      console.warn = function(...args) {
+        return originalWarn.apply(this, args);
+      };
+      
+      console.error = function(...args) {
+        return originalError.apply(this, args);
+      };
+      
+      // Prevent debugger statement
+      setInterval(() => {
+        try {
+          eval('debugger');
+        } catch (e) {
+          // Debugger detected
+          console.warn('🔒 Debugger detected');
+        }
+      }, 1000);
+      
+      console.log('✅ Debugging protection enabled');
+    } catch (error) {
+      console.error('❌ Failed to prevent debugging:', error);
     }
   }
 } 

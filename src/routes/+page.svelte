@@ -8,6 +8,7 @@
   import { updateManager } from '$lib/updateManager';
   import LicenseModal from '$lib/components/LicenseModal.svelte';
   import licenseManager from '$lib/licenseManager';
+  import { AppSecurity } from '$lib/security';
 
   // State stores - these will be updated by Tauri events
   const win = writable(0);
@@ -489,6 +490,9 @@
   // App ready state
   let isAppReady = false; // ควบคุมการแสดงแอพหลัก - ต้องตรวจสอบ License ก่อน
   
+  // Security wrapper - prevent access to main app
+  let securityCheckPassed = false;
+  
   async function checkLicenseStatus() {
     try {
       console.log('🔑 ตรวจสอบ License...');
@@ -500,6 +504,7 @@
         console.log('❌ ไม่พบ License Key - ไม่แสดงแอพหลัก');
         isLicenseValid = false;
         isAppReady = false; // ไม่ให้แสดงแอพหลัก
+        securityCheckPassed = false;
         showLicenseModal = true;
         return;
       }
@@ -510,11 +515,13 @@
       if (isValid) {
         isLicenseValid = true;
         isAppReady = true; // ให้แสดงแอพหลักได้
+        securityCheckPassed = true;
         console.log('✅ License ถูกต้อง');
       } else {
         console.log('❌ License ไม่ถูกต้อง - ไม่แสดงแอพหลัก');
         isLicenseValid = false;
         isAppReady = false; // ไม่ให้แสดงแอพหลัก
+        securityCheckPassed = false;
         showLicenseModal = true;
       }
     } catch (error) {
@@ -522,6 +529,7 @@
       // ในกรณีที่เกิดข้อผิดพลาด ให้ไม่แสดงแอพหลัก
       isLicenseValid = false;
       isAppReady = false; // ไม่ให้แสดงแอพหลัก
+      securityCheckPassed = false;
       showLicenseModal = true;
     } finally {
       isCheckingLicense = false;
@@ -532,21 +540,29 @@
     isLicenseValid = true;
     showLicenseModal = false;
     isAppReady = true; // ให้แสดงแอพหลักได้
+    securityCheckPassed = true;
     console.log('✅ License validated successfully - เข้าใช้งานแอพได้แล้ว');
   }
 
   // ตรวจสอบ License แบบ Real-time ทุก 5 นาที
   let licenseCheckInterval: number | null = null;
-  
+  let licenseGraceTimeout: number | null = null;
+  let gracePeriodActive = false;
+  let gracePeriodStart: number | null = null;
+  let gracePeriodDuration = 5 * 60 * 1000; // 5 นาที
+  let tamperDetected = false;
+  let tamperMessage = '';
+  let showSecurityAlert = false;
+  let securityAlertMsg = '';
+
   function startLicenseMonitoring() {
     if (licenseCheckInterval) {
       clearInterval(licenseCheckInterval);
     }
-    
     licenseCheckInterval = setInterval(async () => {
       console.log('🔍 Real-time license check...');
       await checkLicenseStatus();
-    }, 5 * 60 * 1000); // ตรวจสอบทุก 5 นาที
+    }, 30 * 1000); // ตรวจสอบทุก 30 วินาที
   }
 
   // บันทึก License Key เมื่อจ่ายเงินสำเร็จ
@@ -1894,6 +1910,11 @@
   onMount(async () => {
     console.log('🚀 App initializing...');
     
+    // เริ่มระบบความปลอดภัย
+    AppSecurity.protectLocalStorage();
+    AppSecurity.preventDevTools();
+    AppSecurity.preventDebugging();
+    
     // Check license status first
     await checkLicenseStatus();
     
@@ -2258,6 +2279,35 @@
     }
   }
 
+  // --- Security: DOM Monitoring, Console, LocalStorage ---
+  onMount(() => {
+    AppSecurity.protectLocalStorage();
+    AppSecurity.preventDevTools();
+    AppSecurity.preventDebugging();
+    // DOM Monitoring
+    let domTamperCount = 0;
+    let lastDomHash = '';
+    setInterval(async () => {
+      const tampered = await AppSecurity.detectTampering();
+      if (tampered) {
+        domTamperCount++;
+        tamperDetected = true;
+        tamperMessage = `ตรวจพบการแก้ไข DOM/Storage (${domTamperCount}/5)`;
+        showSecurityAlert = true;
+        securityAlertMsg = tamperMessage;
+        setTimeout(() => { showSecurityAlert = false; }, 5000);
+        if (domTamperCount >= 5) {
+          isLicenseValid = false;
+          isAppReady = false;
+          securityCheckPassed = false;
+          showLicenseModal = true;
+          securityAlertMsg = '⛔ ตรวจพบการแก้ไขระบบเกิน 5 ครั้ง แอปถูกบล็อก';
+          showSecurityAlert = true;
+        }
+      }
+    }, 5000);
+  });
+
 </script>
 
 <!-- Audio elements for sound effects -->
@@ -2492,14 +2542,25 @@
   {/if}
   </div>
   
-  <!-- แสดง LicenseModal ซ้อนทับเมื่อยังไม่ได้ซื้อ License -->
-  {#if !isLicenseValid}
+  <!-- Security wrapper - prevent access to main app -->
+  {#if showSecurityAlert}
+    <div class="security-alert-popup">{securityAlertMsg}</div>
+  {/if}
+  {#if !securityCheckPassed}
+    <!-- Show only LicenseModal when license is not valid -->
     <LicenseModal 
       isOpen={true} 
       onLicenseValid={onLicenseValid}
       isLicenseValid={isLicenseValid}
     />
-
+  {:else}
+    <!-- Main app content - only show when license is valid -->
+    <div class="app-container">
+      <!-- Main app content here -->
+      <div class="app-content">
+        <!-- Your existing app content -->
+      </div>
+    </div>
   {/if}
 {/if}
 
