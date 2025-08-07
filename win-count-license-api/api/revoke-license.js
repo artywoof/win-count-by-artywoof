@@ -1,5 +1,5 @@
 // api/revoke-license.js - Admin endpoint for revoking licenses
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 
 export default async function handler(req, res) {
   // CORS Headers
@@ -39,11 +39,11 @@ export default async function handler(req, res) {
   try {
     console.log('🚫 Revoking license:', license_key, 'Reason:', reason);
 
-    // Initialize SQLite database
-    const db = new Database('licenses.db');
+    // Initialize SQLite database (use temporary file for serverless)
+    const db = new Database(':memory:');
     
     // Create licenses table if not exists
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS licenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         machine_id TEXT NOT NULL,
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     `);
 
     // Check if license exists
-    const license = db.query(`
+    const license = db.prepare(`
       SELECT * FROM licenses 
       WHERE license_key = ?
     `).get(license_key);
@@ -87,11 +87,11 @@ export default async function handler(req, res) {
     }
 
     // Update license status to revoked
-    db.run(`
+    db.prepare(`
       UPDATE licenses 
       SET status = 'revoked' 
       WHERE license_key = ?
-    `, license_key);
+    `).run(license_key);
 
     console.log('✅ License revoked successfully:', license_key);
 

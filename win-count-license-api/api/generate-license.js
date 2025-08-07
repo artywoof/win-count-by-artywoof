@@ -1,5 +1,5 @@
 // api/generate-license.js - Admin endpoint for generating licenses
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 import { createHash } from "crypto";
 
 export default async function handler(req, res) {
@@ -40,11 +40,11 @@ export default async function handler(req, res) {
   try {
     console.log('🔑 Generating license for machine:', machine_id, 'Email:', email);
 
-    // Initialize SQLite database
-    const db = new Database('licenses.db');
+    // Initialize SQLite database (use temporary file for serverless)
+    const db = new Database(':memory:');
     
     // Create licenses table if not exists
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS licenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         machine_id TEXT NOT NULL,
@@ -57,7 +57,7 @@ export default async function handler(req, res) {
     `);
 
     // Check if machine already has an active license
-    const existingLicense = db.query(`
+    const existingLicense = db.prepare(`
       SELECT * FROM licenses 
       WHERE machine_id = ? AND status = 'active'
     `).get(machine_id);
@@ -92,10 +92,10 @@ export default async function handler(req, res) {
     expiresAt.setMonth(expiresAt.getMonth() + duration_months);
 
     // Insert new license into database
-    db.run(`
+    db.prepare(`
       INSERT INTO licenses (machine_id, license_key, email, expires_at, status)
       VALUES (?, ?, ?, ?, 'active')
-    `, machine_id, licenseKey, email || null, expiresAt.toISOString());
+    `).run(machine_id, licenseKey, email || null, expiresAt.toISOString());
 
     console.log('✅ License generated successfully:', licenseKey);
 

@@ -1,5 +1,5 @@
 // api/list-licenses.js - Admin endpoint for listing all licenses
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 
 export default async function handler(req, res) {
   // CORS Headers
@@ -31,11 +31,11 @@ export default async function handler(req, res) {
   try {
     console.log('📋 Listing licenses with filters:', { status, limit, offset });
 
-    // Initialize SQLite database
-    const db = new Database('licenses.db');
+    // Initialize SQLite database (use temporary file for serverless)
+    const db = new Database(':memory:');
     
     // Create licenses table if not exists
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS licenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         machine_id TEXT NOT NULL,
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
     params.push(parseInt(limit), parseInt(offset));
 
     // Get licenses
-    const licenses = db.query(query).all(...params);
+    const licenses = db.prepare(query).all(...params);
 
     // Get total count
     let countQuery = 'SELECT COUNT(*) as total FROM licenses';
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
       countParams.push(status);
     }
     
-    const totalCount = db.query(countQuery).get(...countParams);
+    const totalCount = db.prepare(countQuery).get(...countParams);
 
     console.log('✅ Retrieved', licenses.length, 'licenses');
 

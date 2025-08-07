@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "stripe": "^14.10.0",
-    "micro": "^10.0.1"
+    "better-sqlite3": "^9.4.3"
   },
   "engines": {
     "node": "22.x"

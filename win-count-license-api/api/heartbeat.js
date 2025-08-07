@@ -1,5 +1,5 @@
 // api/heartbeat.js - Real-time license heartbeat endpoint
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 import { createHash } from "crypto";
 
 export default async function handler(req, res) {
@@ -58,11 +58,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // Initialize SQLite database
-    const db = new Database('licenses.db');
+    // Initialize SQLite database (use temporary file for serverless)
+    const db = new Database(':memory:');
     
     // Create licenses table if not exists
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS licenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         machine_id TEXT NOT NULL,
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
     `);
 
     // Query license from database
-    const license = db.query(`
+    const license = db.prepare(`
       SELECT * FROM licenses 
       WHERE license_key = ? AND machine_id = ? AND status = 'active'
     `).get(license_key, machine_id);
@@ -94,11 +94,11 @@ export default async function handler(req, res) {
       console.log('❌ License expired in heartbeat:', license_key);
       
       // Update status to expired
-      db.run(`
+      db.prepare(`
         UPDATE licenses 
         SET status = 'expired' 
         WHERE license_key = ?
-      `, license_key);
+      `).run(license_key);
 
       return res.status(403).json({
         success: false,
