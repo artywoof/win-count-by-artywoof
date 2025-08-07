@@ -5,12 +5,14 @@
 
   export let isOpen: boolean = false;
   export let onLicenseValid: () => void = () => {};
+  export let isLicenseValid: boolean = false; // เพิ่ม prop สำหรับตรวจสอบ License
 
   // --- 🔥 State หลักสำหรับ Quest Log ของเรา! ---
   const modalStep = writable(0); // 0: Main, 1: QR, 2: MachineID, 3: Enter Key
 
   // --- State สำหรับแต่ละขั้นตอน ---
   let vipLicenseKey = '';
+  let step3LicenseKey = ''; // แยกตัวแปรสำหรับขั้นตอนที่ 3
   let inputError = '';
   let inputSuccess = '';
   let machineIdForDisplay = 'กำลังโหลด...';
@@ -34,6 +36,10 @@
        if (input) {
          input.focus();
          input.select();
+         // เปลี่ยนภาษา keyboard เป็นภาษาอังกฤษ
+         if ('setInputMethod' in navigator) {
+           (navigator as any).setInputMethod('en');
+         }
        }
      }, 100);
    }
@@ -46,6 +52,10 @@
       if (input) {
         input.focus();
         input.select();
+        // เปลี่ยนภาษา keyboard เป็นภาษาอังกฤษ
+        if ('setInputMethod' in navigator) {
+          (navigator as any).setInputMethod('en');
+        }
       }
     }, 100);
   }
@@ -54,8 +64,14 @@
     $modalStep = step;
   }
   
-  // ฟังก์ชันที่ถูกเรียกเมื่อ Modal ถูกปิด
+  // ฟังก์ชันที่ถูกเรียกเมื่อ Modal ถูกปิด - ป้องกันการปิดโดยไม่กรอก License
   function closeModal() {
+      // ไม่ให้ปิด Modal ได้ถ้ายังไม่ได้กรอก License ที่ถูกต้อง
+      if (!isLicenseValid) {
+          console.log('🔒 Cannot close modal - license not valid');
+          return;
+      }
+      
       isOpen = false;
       // รอให้ animation ปิดจบ ค่อย reset state
       setTimeout(() => {
@@ -103,7 +119,10 @@
   }
 
   async function validateVipLicense() {
-    if (!vipLicenseKey.trim()) {
+    // ตรวจสอบว่าอยู่ใน step ไหน
+    const currentKey = $modalStep === 3 ? step3LicenseKey : vipLicenseKey;
+    
+    if (!currentKey.trim()) {
       showInputMessage('กรุณากรอก License Key', 'error');
       return;
     }
@@ -114,7 +133,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          license_key: vipLicenseKey.trim(),
+          license_key: currentKey.trim(),
           machine_id: machineId
         })
       });
@@ -122,7 +141,7 @@
       const result = await response.json();
       
       if (result.success) {
-        await invoke('save_license_key', { key: vipLicenseKey.trim() });
+        await invoke('save_license_key', { key: currentKey.trim() });
         showInputMessage('🎉 License Key ถูกต้อง! ยินดีต้อนรับ!', 'success');
         setTimeout(() => {
           closeModal();
@@ -139,8 +158,8 @@
 </script>
 
 {#if isOpen}
-    <div class="modal-backdrop" on:click={$modalStep === 4 ? () => {} : closeModal} on:keydown={(e) => e.key === 'Escape' && ($modalStep === 4 ? goBackToStep(0) : closeModal())} role="dialog" tabindex="0">
-      <div class="modal license-modal" on:click={$modalStep === 4 ? (e) => e.stopPropagation() : (e) => e.stopPropagation()} role="dialog" aria-labelledby="license-modal-title">
+    <div class="modal-backdrop" on:click={() => {}} on:keydown={(e) => e.key === 'Escape' && (isLicenseValid ? closeModal() : null)} role="dialog" tabindex="0">
+      <div class="modal license-modal" on:click={(e) => e.stopPropagation()} role="dialog" aria-labelledby="license-modal-title">
       <div class="modal-body">
 
         {#if $modalStep === 0}
@@ -237,13 +256,109 @@
                          <h3>ขั้นตอนสุดท้าย</h3>
             <p class="step-instruction">นำ License Key ที่ได้รับจาก ArtYWoof มากรอกในช่องด้านล่างเพื่อเปิดใช้งาน PRO</p>
           <div class="input-container">
-            <input 
-              type="text" 
-              bind:value={vipLicenseKey}
-              placeholder="ใส่ License Key ที่นี่..."
-              class="vip-input {inputError ? 'error' : ''} {inputSuccess ? 'success' : ''}"
-              on:keydown={(e) => e.key === 'Enter' && validateVipLicense()}
-            />
+                          <input 
+                type="text" 
+                               bind:value={step3LicenseKey}
+                 class="vip-input {inputError ? 'error' : ''} {inputSuccess ? 'success' : ''}"
+                on:keydown={(e) => {
+                  if (e.key === 'Enter') {
+                    validateVipLicense();
+                  } else if (e.key === 'Backspace') {
+                    step3LicenseKey = '';
+                    setTimeout(() => {
+                      const target = e.target as HTMLInputElement;
+                      target.setSelectionRange(0, 0);
+                    }, 0);
+                  }
+                }}
+                on:focus={() => {
+                  // เปลี่ยนภาษา keyboard เป็นภาษาอังกฤษเมื่อ focus
+                  if ('setInputMethod' in navigator) {
+                    (navigator as any).setInputMethod('en');
+                  }
+                }}
+                                              on:input={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  let value = target.value;
+                  
+                  // เก็บตำแหน่ง cursor และความยาวเดิม
+                  const originalCursorPos = target.selectionStart || 0;
+                  const originalLength = step3LicenseKey.length;
+                  
+
+                  
+                  // อนุญาตเฉพาะตัวอักษรภาษาอังกฤษ ตัวเลข และเครื่องหมาย -
+                  value = value.replace(/[^A-Za-z0-9-]/g, '');
+                  // แปลงเป็นตัวใหญ่
+                  value = value.toUpperCase();
+                  
+                  // ลบเครื่องหมาย - ทั้งหมดก่อน
+                  value = value.replace(/-/g, '');
+                  
+                  // เพิ่มเครื่องหมาย - ตามรูปแบบ LIFE-ARTY-A7K9M-3X8F
+                  if (value.length > 0) {
+                    let formatted = '';
+                    
+                    // ส่วนที่ 1: 4 ตัวอักษร
+                    formatted += value.substring(0, Math.min(4, value.length));
+                    
+                    // เพิ่มขีดที่ตำแหน่งที่ 4 (หลังตัวที่ 4)
+                    if (value.length >= 4) {
+                      formatted += '-';
+                    }
+                    
+                    // ส่วนที่ 2: 4 ตัวอักษร
+                    if (value.length >= 5) {
+                      formatted += value.substring(4, Math.min(8, value.length));
+                    }
+                    
+                    // เพิ่มขีดที่ตำแหน่งที่ 9 (หลังตัวที่ 8)
+                    if (value.length >= 8) {
+                      formatted += '-';
+                    }
+                    
+                    // ส่วนที่ 3: 5 ตัวอักษร
+                    if (value.length >= 9) {
+                      formatted += value.substring(8, Math.min(13, value.length));
+                    }
+                    
+                    // เพิ่มขีดที่ตำแหน่งที่ 15 (หลังตัวที่ 13)
+                    if (value.length >= 13) {
+                      formatted += '-';
+                    }
+                    
+                    // ส่วนที่ 4: 4 ตัวอักษร (รวมทั้งหมด 17 ตัว)
+                    if (value.length >= 14) {
+                      formatted += value.substring(13, Math.min(17, value.length));
+                    }
+                    
+                    value = formatted;
+                  }
+                  
+                  step3LicenseKey = value;
+                  
+                  // ตั้ง cursor position ให้ถูกต้อง
+                  setTimeout(() => {
+                    let newCursorPos = originalCursorPos;
+                    
+                    // ถ้าลบตัว (ความยาวใหม่น้อยกว่าเดิม)
+                    if (value.length < originalLength) {
+                      // คำนวณตำแหน่ง cursor ใหม่โดยลบขีดที่ถูกลบออก
+                      const removedDashes = originalLength - value.length;
+                      newCursorPos = Math.max(0, originalCursorPos - removedDashes);
+                    } else if (value.length > originalLength) {
+                      // ถ้าพิมพ์ตัวใหม่ ให้ cursor อยู่ท้ายสุด
+                      newCursorPos = value.length;
+                    }
+                    
+                    target.setSelectionRange(newCursorPos, newCursorPos);
+                  }, 0);
+                }}
+              required
+              autocomplete="off"
+              spellcheck="false"
+                              maxlength="21"
+              />
             {#if inputError}
                 <div class="input-error">{inputError}</div>
             {/if}
@@ -267,7 +382,7 @@
     </div>
 
     {#if $modalStep === 4}
-      <div class="vip-popup-overlay" on:click={() => goBackToStep(0)} on:keydown={(e) => e.key === 'Escape' && goBackToStep(0)}>
+      <div class="vip-popup-overlay" on:click={() => {}} on:keydown={(e) => e.key === 'Escape' && goBackToStep(0)}>
         <div class="vip-popup" on:click|stopPropagation on:keydown|stopPropagation>
           <button class="vip-popup-close-btn" on:click={() => goBackToStep(0)}>×</button>
           
@@ -281,9 +396,105 @@
               <input 
                 type="text" 
                 bind:value={vipLicenseKey}
-                placeholder="ใส่ License Key ที่นี่..."
                 class="vip-popup-input {inputError ? 'error' : ''} {inputSuccess ? 'success' : ''}"
-                on:keydown={(e) => e.key === 'Enter' && validateVipLicense()}
+                on:keydown={(e) => {
+                  if (e.key === 'Enter') {
+                    validateVipLicense();
+                  } else if (e.key === 'Backspace') {
+                    vipLicenseKey = '';
+                    setTimeout(() => {
+                      const target = e.target as HTMLInputElement;
+                      target.setSelectionRange(0, 0);
+                    }, 0);
+                  }
+                }}
+                on:focus={() => {
+                  // เปลี่ยนภาษา keyboard เป็นภาษาอังกฤษเมื่อ focus
+                  if ('setInputMethod' in navigator) {
+                    (navigator as any).setInputMethod('en');
+                  }
+                }}
+                on:input={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  let value = target.value;
+                  
+                  // เก็บตำแหน่ง cursor และความยาวเดิม
+                  const originalCursorPos = target.selectionStart || 0;
+                  const originalLength = vipLicenseKey.length;
+                  
+
+                  
+                  // อนุญาตเฉพาะตัวอักษรภาษาอังกฤษ ตัวเลข และเครื่องหมาย -
+                  value = value.replace(/[^A-Za-z0-9-]/g, '');
+                  // แปลงเป็นตัวใหญ่
+                  value = value.toUpperCase();
+                  
+                  // ลบเครื่องหมาย - ทั้งหมดก่อน
+                  value = value.replace(/-/g, '');
+                  
+                  // เพิ่มเครื่องหมาย - ตามรูปแบบ LIFE-ARTY-A7K9M-3X8F
+                  if (value.length > 0) {
+                    let formatted = '';
+                    
+                    // ส่วนที่ 1: 4 ตัวอักษร
+                    formatted += value.substring(0, Math.min(4, value.length));
+                    
+                    // เพิ่มขีดที่ตำแหน่งที่ 4 (หลังตัวที่ 4)
+                    if (value.length >= 4) {
+                      formatted += '-';
+                    }
+                    
+                    // ส่วนที่ 2: 4 ตัวอักษร
+                    if (value.length >= 5) {
+                      formatted += value.substring(4, Math.min(8, value.length));
+                    }
+                    
+                    // เพิ่มขีดที่ตำแหน่งที่ 9 (หลังตัวที่ 8)
+                    if (value.length >= 8) {
+                      formatted += '-';
+                    }
+                    
+                    // ส่วนที่ 3: 5 ตัวอักษร
+                    if (value.length >= 9) {
+                      formatted += value.substring(8, Math.min(13, value.length));
+                    }
+                    
+                    // เพิ่มขีดที่ตำแหน่งที่ 15 (หลังตัวที่ 13)
+                    if (value.length >= 13) {
+                      formatted += '-';
+                    }
+                    
+                    // ส่วนที่ 4: 4 ตัวอักษร (รวมทั้งหมด 17 ตัว)
+                    if (value.length >= 14) {
+                      formatted += value.substring(13, Math.min(17, value.length));
+                    }
+                    
+                    value = formatted;
+                  }
+                  
+                  vipLicenseKey = value;
+                  
+                  // ตั้ง cursor position ให้ถูกต้อง
+                  setTimeout(() => {
+                    let newCursorPos = originalCursorPos;
+                    
+                    // ถ้าลบตัว (ความยาวใหม่น้อยกว่าเดิม)
+                    if (value.length < originalLength) {
+                      // คำนวณตำแหน่ง cursor ใหม่โดยลบขีดที่ถูกลบออก
+                      const removedDashes = originalLength - value.length;
+                      newCursorPos = Math.max(0, originalCursorPos - removedDashes);
+                    } else if (value.length > originalLength) {
+                      // ถ้าพิมพ์ตัวใหม่ ให้ cursor อยู่ท้ายสุด
+                      newCursorPos = value.length;
+                    }
+                    
+                    target.setSelectionRange(newCursorPos, newCursorPos);
+                  }, 0);
+                }}
+                required
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="21"
               />
               {#if inputError}
                   <div class="vip-popup-error-msg">{inputError}</div>
@@ -331,7 +542,7 @@
     justify-content: center;
     z-index: 10005;
     padding: 20px;
-    border-radius: 24px;
+    border-radius: 35px;
     margin: 10px;
     pointer-events: all;
   }
@@ -965,12 +1176,14 @@
     justify-content: center;
            z-index: 99999;
     pointer-events: auto;
+    border-radius: 35px;
+    margin: 10px;
                  }
 
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .vip-popup {
-             background: linear-gradient(135deg, rgba(255, 215, 0, 0.95) 0%, rgba(255, 140, 0, 0.95) 100%);
-             border: 2px solid rgba(255, 215, 0, 1);
-      border-radius: 20px;
+             background: linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(20, 20, 40, 0.95) 100%);
+             border: 2px solid #ffd700;
+             border-radius: 12px;
              padding: 30px;
              width: 350px !important;
              max-width: 85%;
@@ -995,15 +1208,15 @@
       position: absolute;
       top: 15px;
       right: 20px;
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid rgba(255, 215, 0, 0.5);
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid #ffd700;
      color: #ffd700;
      font-size: 1.5rem;
     cursor: pointer;
       opacity: 0.8;
     transition: all 0.3s ease;
       padding: 8px 12px;
-      border-radius: 8px;
+      border-radius: 6px;
       font-family: 'MiSansThai-Bold', sans-serif;
       width: 35px;
       height: 35px;
@@ -1014,7 +1227,8 @@
 
         .vip-popup-close-btn:hover {
        opacity: 1;
-       background: rgba(0, 0, 0, 0.3);
+       background: rgba(255, 215, 0, 0.1);
+       border-color: #ffd700;
       transform: scale(1.1);
     }
 
@@ -1025,18 +1239,17 @@
       }
 
      .vip-popup-title {
-        color: #000000 !important;
+        color: #ffd700 !important;
         font-size: 2.2rem !important;
         font-family: 'MiSansThai-Bold', sans-serif;
         margin-bottom: 8px !important;
-        text-shadow: 0 0 10px rgba(255, 215, 0, 0.3) !important;
       }
 
      .vip-popup-subtitle {
-       color: #333333 !important;
+       color: #ffffff !important;
        font-size: 1rem !important;
     font-family: 'MiSansThai', sans-serif;
-       opacity: 0.8;
+       opacity: 0.9;
     margin: 0;
      }
 
@@ -1054,10 +1267,10 @@
                                 .vip-popup-input {
          width: 100% !important;
          padding: 15px 20px !important;
-         border: 2px solid rgba(0, 0, 0, 0.3) !important;
-         border-radius: 12px !important;
-         background: rgba(255, 255, 255, 0.9) !important;
-         color: #000000 !important;
+         border: 1px solid #ffd700 !important;
+         border-radius: 6px !important;
+         background: rgba(0, 0, 0, 0.8) !important;
+         color: #ffd700 !important;
          font-size: 1.2rem !important;
          font-family: 'MiSansThai-Bold', sans-serif !important;
          text-align: center !important;
@@ -1069,23 +1282,16 @@
 
     .vip-popup-input:focus {
       border-color: #ffd700 !important;
-      box-shadow: 0 0 15px rgba(255, 215, 0, 0.5) !important;
-      background: rgba(255, 255, 255, 1) !important;
+      background: rgba(0, 0, 0, 0.9) !important;
       outline: none !important;
-    }
-
-    .vip-popup-input::placeholder {
-      color: rgba(0, 0, 0, 0.5) !important;
     }
 
     .vip-popup-input.error {
       border-color: #ff0000 !important;
-      box-shadow: 0 0 10px rgba(255, 0, 0, 0.4) !important;
     }
 
     .vip-popup-input.success {
       border-color: #00ff00 !important;
-      box-shadow: 0 0 10px rgba(0, 255, 0, 0.4) !important;
     }
 
     .vip-popup-error-msg {
@@ -1114,12 +1320,12 @@
 
                                 .vip-popup-check-btn {
          background: linear-gradient(135deg, #ffd700 0%, #ffb347 100%) !important;
-         border: 2px solid #000000 !important;
+         border: 1px solid #ffd700 !important;
          color: #000000 !important;
          padding: 15px 25px !important;
          font-size: 1.2rem !important;
          font-weight: bold !important;
-         border-radius: 12px !important;
+         border-radius: 6px !important;
          cursor: pointer !important;
          transition: all 0.3s ease !important;
          font-family: 'MiSansThai-Bold', sans-serif !important;
@@ -1143,7 +1349,6 @@
 
     .vip-popup-check-btn:hover {
       transform: translateY(-2px) !important;
-      box-shadow: 0 8px 20px rgba(255, 215, 0, 0.6) !important;
       background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%) !important;
   }
 </style> 

@@ -50,19 +50,38 @@ fn get_app_data_file(filename: &str) -> Result<PathBuf, String> {
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
+    // ไม่ต้องตรวจสอบ License สำหรับการทักทาย เพราะเป็นฟังก์ชันพื้นฐาน
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
 #[tauri::command]
 fn get_app_version() -> String {
+    // ไม่ต้องตรวจสอบ License สำหรับการดึงเวอร์ชันแอพ เพราะเป็นฟังก์ชันพื้นฐาน
     env!("CARGO_PKG_VERSION").to_string()
 }
 
 // License management functions
 const LICENSE_SERVER_URL: &str = "https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api";
 
+// License validation function
+fn is_license_valid() -> bool {
+    // Check if license file exists and is valid
+    if let Ok(license_path) = get_app_data_file("win_count_license.json") {
+        if let Ok(license_content) = fs::read_to_string(&license_path) {
+            if let Ok(license_data) = serde_json::from_str::<serde_json::Value>(&license_content) {
+                if let Some(license_key) = license_data.get("license_key").and_then(|v| v.as_str()) {
+                    // Basic validation - in production, this should check with server
+                    return !license_key.is_empty();
+                }
+            }
+        }
+    }
+    false
+}
+
 #[tauri::command]
 async fn validate_license_key(license_key: String) -> Result<bool, String> {
+    // ไม่ต้องตรวจสอบ License สำหรับการตรวจสอบ License Key เพราะเป็นฟังก์ชันการตรวจสอบ License
     println!("🔑 Validating license key: {}", license_key);
     
     // Get machine ID
@@ -123,6 +142,7 @@ async fn validate_license_key(license_key: String) -> Result<bool, String> {
 
 #[tauri::command]
 fn save_license_key(key: String) -> Result<(), String> {
+    // ไม่ต้องตรวจสอบ License สำหรับการบันทึก License Key เพราะเป็นฟังก์ชันการตั้งค่า License
     println!("💾 Saving license key: {}", key);
     
     // Save to app data directory
@@ -145,6 +165,7 @@ fn save_license_key(key: String) -> Result<(), String> {
 
 #[tauri::command]
 fn get_machine_id() -> Result<String, String> {
+    // ไม่ต้องตรวจสอบ License สำหรับการสร้าง Machine ID เพราะเป็นฟังก์ชันพื้นฐาน
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use std::env;
@@ -178,6 +199,7 @@ fn get_machine_id() -> Result<String, String> {
 // Payment system functions - now using the promptpay module
 #[tauri::command]
 async fn create_promptpay_qr(amount: f64, phone: String) -> Result<String, String> {
+    // ไม่ต้องตรวจสอบ License สำหรับการสร้าง QR Code เพราะเป็นฟังก์ชันการชำระเงิน
     // Use promptpay.io directly
     let qr_url = format!("https://promptpay.io/{}/{}", phone, amount);
     Ok(qr_url)
@@ -187,6 +209,10 @@ async fn create_promptpay_qr(amount: f64, phone: String) -> Result<String, Strin
 
 #[tauri::command]
 fn update_hotkey(action: String, hotkey: String) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🎹 Updating hotkey: {} -> {}", action, hotkey);
     
     // Load existing hotkeys
@@ -208,6 +234,10 @@ fn update_hotkey(action: String, hotkey: String) -> Result<(), String> {
 
 #[tauri::command]
 fn reload_hotkeys_command(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🔄 RELOAD_HOTKEYS_COMMAND CALLED!");
     println!("🔄 Reloading hotkeys...");
     
@@ -630,24 +660,42 @@ fn save_state(path: &PathBuf, state: &WinState) {
 
 #[tauri::command]
 fn get_win_state(state: State<'_, SharedWinState>) -> WinState {
+    if !is_license_valid() {
+        // Return default state if license not valid
+        return WinState::default();
+    }
     state.lock().unwrap().clone()
 }
 
 #[tauri::command]
-fn set_win_state(new_state: WinState, state: State<'_, SharedWinState>) {
+fn set_win_state(new_state: WinState, state: State<'_, SharedWinState>) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let mut s = state.lock().unwrap();
     *s = new_state.clone();
     let path = get_state_path();
     save_state(&path, &new_state);
+    Ok(())
 }
 
 #[tauri::command]
-fn minimize_app(window: tauri::Window) {
+fn minimize_app(window: tauri::Window) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let _ = window.minimize();
+    Ok(())
 }
 
 #[tauri::command]
 fn hide_to_tray(window: tauri::Window) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🔒 hide_to_tray command called");
     match window.hide() {
         Ok(_) => {
@@ -673,9 +721,14 @@ fn hide_to_tray(window: tauri::Window) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn show_from_tray(window: tauri::Window) {
+fn show_from_tray(window: tauri::Window) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let _ = window.show();
     let _ = window.set_focus();
+    Ok(())
 }
 
 // Key event tracking for dynamic speed
@@ -835,27 +888,47 @@ fn change_win(app: &tauri::AppHandle, state: &SharedWinState, broadcast_tx: &tok
 }
 
 #[tauri::command]
-fn increase_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) {
+fn increase_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
     change_win(&app, &state, &*broadcast_tx, 1);
+    Ok(())
 }
 
 #[tauri::command]
-fn decrease_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) {
+fn decrease_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
     change_win(&app, &state, &*broadcast_tx, -1);
+    Ok(())
 }
 
 #[tauri::command]
-fn increase_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, step: i32) {
+fn increase_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, step: i32) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
     change_win_with_step(&app, &state, &*broadcast_tx, 1, step);
+    Ok(())
 }
 
 #[tauri::command]
-fn decrease_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, step: i32) {
+fn decrease_win_by_step(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, step: i32) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
     change_win_with_step(&app, &state, &*broadcast_tx, -1, step);
+    Ok(())
 }
 
 #[tauri::command]
-fn set_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, value: i32) {
+fn set_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, value: i32) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let mut s = state.lock().unwrap();
     // Clamp value between -10000 and 10000
     let new_win = value.max(-10000).min(10000);
@@ -890,10 +963,15 @@ fn set_win(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx
     }
     
     println!("🎯 Win set to: {}", new_win);
+    Ok(())
 }
 
 #[tauri::command]
-fn set_goal(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, value: i32) {
+fn set_goal(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>, value: i32) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let mut s = state.lock().unwrap();
     // Clamp value between -10000 and 10000  
     let new_goal = value.max(-10000).min(10000);
@@ -928,10 +1006,15 @@ fn set_goal(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_t
     }
     
     println!("🎯 Goal set to: {}", new_goal);
+    Ok(())
 }
 
 #[tauri::command]
-fn toggle_goal_visibility(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) {
+fn toggle_goal_visibility(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let mut s = state.lock().unwrap();
     s.show_goal = !s.show_goal;
     let _ = app.emit("state-updated", s.clone());
@@ -939,10 +1022,15 @@ fn toggle_goal_visibility(app: tauri::AppHandle, state: State<'_, SharedWinState
     save_state(&path, &s);
     let _ = broadcast_tx.send(s.clone());
     println!("🎯 Goal visibility toggled to: {}", s.show_goal);
+    Ok(())
 }
 
 #[tauri::command]
-fn toggle_crown_visibility(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) {
+fn toggle_crown_visibility(app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let mut s = state.lock().unwrap();
     s.show_crown = !s.show_crown;
     let _ = app.emit("state-updated", s.clone());
@@ -950,10 +1038,15 @@ fn toggle_crown_visibility(app: tauri::AppHandle, state: State<'_, SharedWinStat
     save_state(&path, &s);
     let _ = broadcast_tx.send(s.clone());
     println!("👑 Crown visibility toggled to: {}", s.show_crown);
+    Ok(())
 }
 
 #[tauri::command]
 async fn copy_overlay_link() -> Result<String, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     use std::process::Command;
     let overlay_url = "http://localhost:1420/overlay";
     
@@ -983,6 +1076,10 @@ async fn copy_overlay_link() -> Result<String, String> {
 
 #[tauri::command]
 fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let presets_path = get_app_data_file("win_count_presets.json")?;
     
     println!("🔴 Attempting to save preset: {:?}", preset);
@@ -1029,6 +1126,10 @@ fn save_preset(preset: PresetData, state: State<'_, SharedWinState>) -> Result<(
 
 #[tauri::command]
 fn load_presets() -> Result<Vec<PresetData>, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let presets_path = get_app_data_file("win_count_presets.json")?;
     
     println!("📋 Loading presets from: {:?}", presets_path);
@@ -1071,6 +1172,10 @@ fn load_presets() -> Result<Vec<PresetData>, String> {
 
 #[tauri::command]
 fn load_preset(name: String, app: tauri::AppHandle, state: State<'_, SharedWinState>, broadcast_tx: State<'_, broadcast::Sender<WinState>>) -> Result<PresetData, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🔍 Attempting to load preset: {}", name);
     
     let presets = load_presets()?;
@@ -1121,6 +1226,10 @@ fn load_preset(name: String, app: tauri::AppHandle, state: State<'_, SharedWinSt
 
 #[tauri::command]
 fn delete_preset(name: String) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🗑️ DELETE_PRESET CALLED with name: {}", name);
     let presets_path = get_app_data_file("win_count_presets.json")?;
     println!("📁 Presets path: {:?}", presets_path);
@@ -1179,6 +1288,10 @@ fn delete_preset(name: String) -> Result<(), String> {
 
 #[tauri::command]
 fn rename_preset(old_name: String, new_name: String) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let presets_path = get_app_data_file("win_count_presets.json")?;
     
     if !presets_path.exists() {
@@ -1208,6 +1321,10 @@ fn rename_preset(old_name: String, new_name: String) -> Result<(), String> {
 
 #[tauri::command]
 fn play_test_sounds(app: tauri::AppHandle) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     // Emit events for the frontend to play sounds
     let _ = app.emit("play-increase-sound", {});
     
@@ -1223,6 +1340,10 @@ fn play_test_sounds(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn test_hotkeys() -> Result<String, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🧪 Testing hotkeys...");
     
     // Load current hotkeys
@@ -1255,6 +1376,10 @@ fn test_hotkeys() -> Result<String, String> {
 
 #[tauri::command]
 fn clear_hotkeys() -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🧹 CLEAR_HOTKEYS COMMAND CALLED!");
     println!("🧹 Clearing hotkeys...");
 
@@ -1278,6 +1403,10 @@ fn clear_hotkeys() -> Result<(), String> {
 
 #[tauri::command]
 fn save_default_hotkeys() -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("💾 SAVE_DEFAULT_HOTKEYS COMMAND CALLED!");
     
     // Create default hotkeys HashMap
@@ -1304,6 +1433,10 @@ fn save_default_hotkeys() -> Result<(), String> {
 
 #[tauri::command]
 fn check_hotkey_file() -> Result<String, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🔍 Checking hotkey file...");
     
     let hotkey_path = get_app_data_file("win_count_hotkeys.json")?;
@@ -1329,6 +1462,10 @@ fn check_hotkey_file() -> Result<String, String> {
 // Sound file management functions
 #[tauri::command]
 fn save_custom_sound(file_data: Vec<u8>, filename: String, sound_type: String) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let app_data_dir = get_app_data_dir()?;
     let sounds_dir = app_data_dir.join("sounds");
     
@@ -1358,6 +1495,10 @@ fn save_custom_sound(file_data: Vec<u8>, filename: String, sound_type: String) -
 
 #[tauri::command]
 fn get_custom_sound_path(sound_type: String) -> Result<String, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let app_data_dir = get_app_data_dir()?;
     let metadata_path = app_data_dir.join(format!("sound_{}_metadata.json", sound_type));
     
@@ -1384,6 +1525,10 @@ fn get_custom_sound_path(sound_type: String) -> Result<String, String> {
 
 #[tauri::command]
 fn delete_custom_sound(sound_type: String) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let app_data_dir = get_app_data_dir()?;
     let metadata_path = app_data_dir.join(format!("sound_{}_metadata.json", sound_type));
     
@@ -1414,12 +1559,20 @@ fn delete_custom_sound(sound_type: String) -> Result<(), String> {
 
 #[tauri::command]
 fn read_sound_file(file_path: String) -> Result<Vec<u8>, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     fs::read(&file_path)
         .map_err(|e| format!("Failed to read sound file: {}", e))
 }
 
 #[tauri::command]
 fn get_custom_sound_filename(sound_type: String) -> Result<String, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     let app_data_dir = get_app_data_dir()?;
     let metadata_path = app_data_dir.join(format!("sound_{}_metadata.json", sound_type));
     
@@ -1442,6 +1595,10 @@ fn get_custom_sound_filename(sound_type: String) -> Result<String, String> {
 // Auto-Update Commands
 #[tauri::command]
 async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🔄 Checking for updates...");
     
     use tauri_plugin_updater::UpdaterExt;
@@ -1491,6 +1648,10 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateInfo, String> 
 
 #[tauri::command]
 async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("📥 Starting update download and installation...");
     
     use tauri_plugin_updater::UpdaterExt;
@@ -1556,6 +1717,10 @@ async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String
 
 #[tauri::command]
 async fn install_update_and_restart(app: tauri::AppHandle) -> Result<(), String> {
+    if !is_license_valid() {
+        return Err("License not valid".to_string());
+    }
+    
     println!("🔄 Installing update and restarting...");
     
     // ฟังก์ชันนี้จะถูกเรียกหลังจากที่ download เสร็จแล้ว
