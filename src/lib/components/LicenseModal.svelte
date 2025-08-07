@@ -223,7 +223,20 @@
           </div>
   </div>
             <button class="next-step-button" on:click={() => {
-              window.open('https://discord.gg/eQT7DyxAG6', '_blank');
+              // ลองเปิด Discord app ก่อน ถ้าไม่ได้ค่อยเปิดในเบราว์เซอร์
+              try {
+                // ลองเปิด Discord app ด้วย protocol
+                window.location.href = 'discord://discord.gg/eQT7DyxAG6';
+                
+                // ถ้า Discord app ไม่เปิด ให้เปิดในเบราว์เซอร์แทน
+                setTimeout(() => {
+                  window.open('https://discord.gg/eQT7DyxAG6', '_blank');
+                }, 1000);
+              } catch (error) {
+                // ถ้าเกิด error ให้เปิดในเบราว์เซอร์เลย
+                window.open('https://discord.gg/eQT7DyxAG6', '_blank');
+              }
+              
               goToMachineIdStep();
             }}>
               ส่งหลักฐาน & ไปที่ Discord 🚀
@@ -255,11 +268,12 @@
              <button class="back-button" on:click={() => goBackToStep(2)}>← กลับ</button>
                          <h3>ขั้นตอนสุดท้าย</h3>
             <p class="step-instruction">นำ License Key ที่ได้รับจาก ArtYWoof มากรอกในช่องด้านล่างเพื่อเปิดใช้งาน PRO</p>
-          <div class="input-container">
-                          <input 
+          <div class="license-input-display">
+            <div class="license-input-box">
+              <input 
                 type="text" 
-                               bind:value={step3LicenseKey}
-                 class="vip-input {inputError ? 'error' : ''} {inputSuccess ? 'success' : ''}"
+                bind:value={step3LicenseKey}
+                class="license-input {inputError ? 'error' : ''} {inputSuccess ? 'success' : ''}"
                 on:keydown={(e) => {
                   if (e.key === 'Enter') {
                     validateVipLicense();
@@ -365,19 +379,15 @@
             {#if inputSuccess}
                 <div class="input-success">{inputSuccess}</div>
             {/if}
+            </div>
           </div>
           <div class="vip-button-group">
             <button class="vip-validate-btn" on:click={validateVipLicense}>
                 ตรวจสอบ Key
             </button>
-      </div>
-    </div>
-  {/if}
-
-        
-            
-        </div>
           </div>
+        </div>
+      {/if}
           
     </div>
 
@@ -934,21 +944,25 @@
   }
 
   .next-step-button {
-    background: linear-gradient(135deg, #00ffff 0%, #0099cc 100%);
-    color: #000000;
-    border: none;
-    border-radius: 12px;
-    padding: 18px 26px;
-    font-size: 1.6rem;
+    background: rgba(0, 255, 255, 0.1);
+    border: 2px solid rgba(0, 255, 255, 0.5);
+    color: #00ffff;
+    font-size: 1.4rem;
     font-weight: 600;
     cursor: pointer;
+    opacity: 0.9;
     transition: all 0.3s ease;
+    padding: 16px 24px;
+    border-radius: 12px;
     font-family: 'MiSansThai-Bold', sans-serif;
     margin-top: auto; /* ดันปุ่มไปล่างสุด */
+    width: 100%;
   }
 
   .next-step-button:hover {
-    transform: translateY(-2px);
+    opacity: 1;
+    background: rgba(0, 255, 255, 0.2);
+    border-color: rgba(0, 255, 255, 0.8);
   }
   
   /* Machine ID Display */
@@ -986,6 +1000,46 @@
     opacity: 1;
     background: rgba(0, 255, 255, 0.2);
     transform: translateY(-1px);
+  }
+
+  /* License Input Display */
+  .license-input-display {
+    margin-bottom: 20px;
+  }
+
+  .license-input-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    padding: 15px 20px;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+  }
+
+  .license-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #00ffff;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 1.4rem;
+    font-weight: bold;
+    text-align: center;
+    outline: none;
+    letter-spacing: 1px;
+  }
+
+  .license-input::placeholder {
+    color: rgba(0, 255, 255, 0.5);
+  }
+
+  .license-input.error {
+    color: #ff0000;
+  }
+
+  .license-input.success {
+    color: #00ff00;
   }
 
   /* VIP Input */
