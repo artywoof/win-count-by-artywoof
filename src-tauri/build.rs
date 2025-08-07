@@ -2,25 +2,13 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
-    // Code Obfuscation - เข้ารหัสโค้ดก่อน compile
-    println!("🔒 Starting code obfuscation...");
+    // Code Obfuscation temporarily disabled for compilation
+    println!("⚠️  Code obfuscation disabled for debugging");
     
-    // Obfuscate main.rs
-    obfuscate_source_file("src/main.rs");
+    // Skip obfuscation for now
+    // obfuscate_source_file("src/main.rs");
     
-    // Obfuscate other critical files if they exist
-    let files_to_obfuscate = [
-        "src/keyboard_hook.rs",
-        "tauri.conf.json",
-    ];
-    
-    for file in &files_to_obfuscate {
-        if Path::new(file).exists() {
-            obfuscate_source_file(file);
-        }
-    }
-    
-    println!("✅ Code obfuscation completed");
+    println!("✅ Build script completed");
     tauri_build::build()
 }
 
