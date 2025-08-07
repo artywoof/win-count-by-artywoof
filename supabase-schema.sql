@@ -96,13 +96,13 @@ BEGIN
     INSERT INTO licenses (
         machine_id, 
         license_key, 
-        email, 
+        discord_id, 
         expires_at, 
         notes
     ) VALUES (
         p_machine_id, 
         new_license_key, 
-        p_email, 
+        p_discord_id, 
         expires_date, 
         p_notes
     );
@@ -112,9 +112,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- เพิ่มข้อมูลตัวอย่างสำหรับทดสอบ (คุณสามารถลบได้หลังจากทดสอบเสร็จ)
-INSERT INTO licenses (machine_id, license_key, email, notes) VALUES 
-('test-machine-123', 'WC-TEST-2025-ABCD1234', 'test@example.com', 'ข้อมูลทดสอบระบบ - ลบได้'),
-('demo-machine-456', 'WC-DEMO-2025-EFGH5678', 'demo@example.com', 'เครื่องทดสอบ Demo');
+INSERT INTO licenses (machine_id, license_key, discord_id, notes) VALUES 
+('test-machine-123', 'WC-TEST-2025-ABCD1234', '123456789012345678', 'ข้อมูลทดสอบระบบ - ลบได้'),
+('demo-machine-456', 'WC-DEMO-2025-EFGH5678', '876543210987654321', 'เครื่องทดสอบ Demo');
 
 -- ดูข้อมูลที่เพิ่งสร้าง
 SELECT * FROM licenses;
