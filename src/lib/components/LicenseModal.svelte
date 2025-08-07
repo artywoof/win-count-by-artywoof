@@ -160,7 +160,7 @@
 {#if isOpen}
     <div class="modal-backdrop" on:click={() => {}} on:keydown={(e) => e.key === 'Escape' && (isLicenseValid ? closeModal() : null)} role="dialog" tabindex="0">
       <div class="modal license-modal" on:click={(e) => e.stopPropagation()} role="dialog" aria-labelledby="license-modal-title">
-      <div class="modal-body">
+        <div class="modal-body">
 
         {#if $modalStep === 0}
           <div class="payment-intro">
@@ -178,7 +178,7 @@
                  <span class="price-amount" style="text-decoration: line-through; color: #ffffff; font-size: 1.8rem; opacity: 0.7;">฿199</span>
                  <span class="price-period" style="color: #ffffff; font-size: 1.4rem;">/เดือน</span>
                </div>
-      </div>
+                         </div>
 
             <div class="promotion-banner-compact">
               <div class="promo-content">
@@ -193,9 +193,31 @@
                 <p>ดูรายละเอียดฟีเจอร์ทั้งหมดได้ที่ Discord</p>
               </div>
               <div class="discord-icon">
-                <a href="https://discord.gg/eQT7DyxAG6" target="_blank" rel="noopener noreferrer">
+                <button 
+                  class="discord-link-btn" 
+                  on:click={() => {
+                    // ลองเปิด Discord app ก่อน
+                    const discordUrl = 'discord://discord.gg/eQT7DyxAG6';
+                    const webUrl = 'https://discord.gg/eQT7DyxAG6';
+                    
+                    // สร้าง iframe เพื่อทดสอบว่า Discord app เปิดได้หรือไม่
+                    const iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.src = discordUrl;
+                    document.body.appendChild(iframe);
+                    
+                    // รอสักครู่แล้วตรวจสอบ
+                    setTimeout(() => {
+                      // ลบ iframe
+                      document.body.removeChild(iframe);
+                      
+                      // เปิดในเบราว์เซอร์แทน
+                      window.open(webUrl, '_blank');
+                    }, 500);
+                  }}
+                >
                   <img src="/assets/logo/Discord-Logo-Blurple.svg" alt="Discord" />
-                </a>
+                </button>
               </div>
             </div>
            
@@ -220,22 +242,27 @@
               <img src="https://promptpay.io/0909783454/149.png" alt="PromptPay QR Code" class="qr-image-style" />
               <div class="qr-footer">
                 090-978-3454 | ฿149
-          </div>
-  </div>
+              </div>
+                                    </div>
             <button class="next-step-button" on:click={() => {
-              // ลองเปิด Discord app ก่อน ถ้าไม่ได้ค่อยเปิดในเบราว์เซอร์
-              try {
-                // ลองเปิด Discord app ด้วย protocol
-                window.location.href = 'discord://discord.gg/eQT7DyxAG6';
+              // ลองเปิด Discord app ก่อน
+              const discordUrl = 'discord://discord.gg/eQT7DyxAG6';
+              const webUrl = 'https://discord.gg/eQT7DyxAG6';
+              
+              // สร้าง iframe เพื่อทดสอบว่า Discord app เปิดได้หรือไม่
+              const iframe = document.createElement('iframe');
+              iframe.style.display = 'none';
+              iframe.src = discordUrl;
+              document.body.appendChild(iframe);
+              
+              // รอสักครู่แล้วตรวจสอบ
+              setTimeout(() => {
+                // ลบ iframe
+                document.body.removeChild(iframe);
                 
-                // ถ้า Discord app ไม่เปิด ให้เปิดในเบราว์เซอร์แทน
-                setTimeout(() => {
-                  window.open('https://discord.gg/eQT7DyxAG6', '_blank');
-                }, 1000);
-              } catch (error) {
-                // ถ้าเกิด error ให้เปิดในเบราว์เซอร์เลย
-                window.open('https://discord.gg/eQT7DyxAG6', '_blank');
-              }
+                // เปิดในเบราว์เซอร์แทน
+                window.open(webUrl, '_blank');
+              }, 500);
               
               goToMachineIdStep();
             }}>
@@ -255,8 +282,8 @@
                 <button on:click={copyMachineId} title="คัดลอก">
                   {#if machineIdCopied}✅{:else}📋{/if}
                 </button>
+              </div>
             </div>
-               </div>
             <button class="next-step-button" on:click={goToLicenseKeyStep}>
               ได้รับ Key แล้ว (ขั้นตอนสุดท้าย) →
             </button>
@@ -388,7 +415,6 @@
           </div>
         </div>
       {/if}
-          
     </div>
 
     {#if $modalStep === 4}
@@ -522,7 +548,9 @@
       </div>
     </div>
   {/if}
-{/if}
+  </div>
+  </div>
+  {/if}
 
 <style>
   @font-face {
@@ -734,8 +762,16 @@
     flex-shrink: 0;
   }
 
-  .discord-icon a {
-    display: block;
+  .discord-link-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.3s ease;
+  }
+
+  .discord-link-btn:hover {
+    transform: scale(1.1);
   }
 
   .discord-icon img {
@@ -744,7 +780,7 @@
     transition: all 0.3s ease;
   }
 
-  .discord-icon a:hover img {
+  .discord-icon img:hover {
     transform: scale(1.1);
     filter: brightness(1.2);
   }
@@ -919,8 +955,6 @@
   .promptpay-logo {
     width: 240px;
     height: 80px;
-    border-radius: 6px;
-    border: 1px solid #00ffff
   }
   
   .qr-image-style {
@@ -1222,30 +1256,30 @@
     position: fixed;
     top: 0;
     left: 0;
-           width: 100vw;
-           height: 100vh;
-           background: rgba(0, 0, 0, 0.6);
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
     display: flex;
     align-items: center;
     justify-content: center;
-           z-index: 99999;
+    z-index: 99999;
     pointer-events: auto;
-    border-radius: 35px;
-    margin: 10px;
-                 }
+  }
 
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .vip-popup {
-             background: linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(20, 20, 40, 0.95) 100%);
-             border: 2px solid #ffd700;
-             border-radius: 12px;
-             padding: 30px;
-             width: 350px !important;
-             max-width: 85%;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(20, 20, 40, 0.95) 100%);
+    border: 2px solid #ffd700;
+    border-radius: 12px;
+    padding: 25px;
+    width: 320px;
+    max-width: 85%;
     text-align: center;
     position: relative;
-               z-index: 100000;
-               animation: popupSlideIn 0.3s ease-out;
-    }
+    z-index: 100000;
+    animation: popupSlideIn 0.3s ease-out;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    margin: 0 auto;
+  }
 
           @keyframes popupSlideIn {
     from {
@@ -1320,16 +1354,16 @@
 
                                 .vip-popup-input {
          width: 100% !important;
-         padding: 15px 20px !important;
+         padding: 12px 16px !important;
          border: 1px solid #ffd700 !important;
          border-radius: 6px !important;
          background: rgba(0, 0, 0, 0.8) !important;
          color: #ffd700 !important;
-         font-size: 1.2rem !important;
+         font-size: 1.1rem !important;
          font-family: 'MiSansThai-Bold', sans-serif !important;
          text-align: center !important;
          transition: all 0.3s ease !important;
-         margin-bottom: 10px !important;
+         margin-bottom: 8px !important;
          box-sizing: border-box !important;
          letter-spacing: 1px !important;
        }
@@ -1373,13 +1407,13 @@
     }
 
                                 .vip-popup-check-btn {
-         background: linear-gradient(135deg, #ffd700 0%, #ffb347 100%) !important;
-         border: 1px solid #ffd700 !important;
-         color: #000000 !important;
-         padding: 15px 25px !important;
-         font-size: 1.2rem !important;
-         font-weight: bold !important;
-         border-radius: 6px !important;
+         background: rgba(255, 215, 0, 0.1) !important;
+         border: 2px solid rgba(255, 215, 0, 0.5) !important;
+         color: #ffd700 !important;
+         padding: 16px 24px !important;
+         font-size: 1.4rem !important;
+         font-weight: 600 !important;
+         border-radius: 12px !important;
          cursor: pointer !important;
          transition: all 0.3s ease !important;
          font-family: 'MiSansThai-Bold', sans-serif !important;
@@ -1391,6 +1425,7 @@
          gap: 10px !important;
          position: relative !important;
          overflow: hidden !important;
+         opacity: 0.9 !important;
        }
 
        .popup-btn-icon {
@@ -1398,11 +1433,12 @@
        }
 
        .popup-btn-text {
-         font-size: 1.2rem !important;
+         font-size: 1.4rem !important;
        }
 
     .vip-popup-check-btn:hover {
-      transform: translateY(-2px) !important;
-      background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%) !important;
+      opacity: 1 !important;
+      background: rgba(255, 215, 0, 0.2) !important;
+      border-color: rgba(255, 215, 0, 0.8) !important;
   }
 </style> 
