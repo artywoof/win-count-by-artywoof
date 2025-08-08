@@ -24,7 +24,7 @@
 #### **Build Settings:**
 - **Build Command:** `echo "No build needed for API"`
 - **Output Directory:** `api`
-- **Install Command:** `bun install`
+- **Install Command:** `npm install`
 
 ### **4. ตั้งค่า Environment Variables**
 
