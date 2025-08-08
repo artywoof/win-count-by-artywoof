@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const { admin_key, machine_id, discord_id, duration_months = 1, notes } = req.body;
 
   // Admin authentication
-  const ADMIN_KEY = process.env.ADMIN_KEY || 'artywoof_admin_2024';
+  const ADMIN_KEY = process.env.ADMIN_KEY || 'ArtYWoof_y7#LO54Cc$%8#CwVwDvS9$!OAOU!QdJ*_WinCount2025';
   
   if (!admin_key || admin_key !== ADMIN_KEY) {
     return res.status(401).json({
