@@ -1,5 +1,5 @@
--- สร้างตารางสำหรับเก็บข้อมูล License ของลูกค้า
-CREATE TABLE licenses (
+-- สร้างตารางสำหรับเก็บข้อมูล License ของลูกค้า (ใช้ IF NOT EXISTS เพื่อความปลอดภัย)
+CREATE TABLE IF NOT EXISTS licenses (
     id SERIAL PRIMARY KEY, -- รหัสอัตโนมัติสำหรับแต่ละ License
     machine_id TEXT UNIQUE NOT NULL, -- รหัสเครื่องของลูกค้า (ไม่ซ้ำกัน)
     license_key TEXT UNIQUE NOT NULL, -- License Key ที่เราให้ลูกค้า
@@ -13,10 +13,10 @@ CREATE TABLE licenses (
 );
 
 -- สร้าง Index เพื่อให้การค้นหาเร็วขึ้น
-CREATE INDEX idx_licenses_machine_id ON licenses(machine_id);
-CREATE INDEX idx_licenses_license_key ON licenses(license_key);
-CREATE INDEX idx_licenses_status ON licenses(status);
-CREATE INDEX idx_licenses_discord_id ON licenses(discord_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_machine_id ON licenses(machine_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_license_key ON licenses(license_key);
+CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(status);
+CREATE INDEX IF NOT EXISTS idx_licenses_discord_id ON licenses(discord_id);
 
 -- สร้าง Function สำหรับตรวจสอบว่า License หมดอายุหรือยัง
 CREATE OR REPLACE FUNCTION check_license_expired()
@@ -31,6 +31,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- สร้าง Trigger ที่จะรันทุกครั้งที่มีการ UPDATE ตาราง licenses
+DROP TRIGGER IF EXISTS trigger_check_expired ON licenses;
 CREATE TRIGGER trigger_check_expired
     BEFORE UPDATE ON licenses
     FOR EACH ROW
@@ -114,7 +115,8 @@ $$ LANGUAGE plpgsql;
 -- เพิ่มข้อมูลตัวอย่างสำหรับทดสอบ (คุณสามารถลบได้หลังจากทดสอบเสร็จ)
 INSERT INTO licenses (machine_id, license_key, discord_id, notes) VALUES 
 ('test-machine-123', 'WC-TEST-2025-ABCD1234', '123456789012345678', 'ข้อมูลทดสอบระบบ - ลบได้'),
-('demo-machine-456', 'WC-DEMO-2025-EFGH5678', '876543210987654321', 'เครื่องทดสอบ Demo');
+('demo-machine-456', 'WC-DEMO-2025-EFGH5678', '876543210987654321', 'เครื่องทดสอบ Demo')
+ON CONFLICT (machine_id) DO NOTHING; -- ไม่เพิ่มถ้ามีอยู่แล้ว
 
 -- ดูข้อมูลที่เพิ่งสร้าง
 SELECT * FROM licenses;
