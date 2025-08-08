@@ -162,7 +162,7 @@
     try {
       const machineId = await invoke('get_machine_id');
       // ใช้ URL จาก Vercel ของอาร์ต (อย่าลืมเปลี่ยนถ้า URL ไม่ถูกต้อง)
-      const response = await fetch('https://win-count-by-artywoof.vercel.app/api/verify-license', {
+      const response = await fetch('https://win-count-by-artywoof.vercel.app/api/validate-license', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -368,83 +368,17 @@
                   const target = e.target as HTMLInputElement;
                   let value = target.value;
                   
-                  // เก็บตำแหน่ง cursor และความยาวเดิม
-                  const originalCursorPos = target.selectionStart || 0;
-                  const originalLength = step3LicenseKey.length;
-                  
-
-                  
                   // อนุญาตเฉพาะตัวอักษรภาษาอังกฤษ ตัวเลข และเครื่องหมาย -
                   value = value.replace(/[^A-Za-z0-9-]/g, '');
                   // แปลงเป็นตัวใหญ่
                   value = value.toUpperCase();
                   
-                  // ลบเครื่องหมาย - ทั้งหมดก่อน
-                  value = value.replace(/-/g, '');
-                  
-                  // เพิ่มเครื่องหมาย - ตามรูปแบบ LIFE-ARTY-A7K9M-3X8F
-                  if (value.length > 0) {
-                    let formatted = '';
-                    
-                    // ส่วนที่ 1: 4 ตัวอักษร
-                    formatted += value.substring(0, Math.min(4, value.length));
-                    
-                    // เพิ่มขีดที่ตำแหน่งที่ 4 (หลังตัวที่ 4)
-                    if (value.length >= 4) {
-                      formatted += '-';
-                    }
-                    
-                    // ส่วนที่ 2: 4 ตัวอักษร
-                    if (value.length >= 5) {
-                      formatted += value.substring(4, Math.min(8, value.length));
-                    }
-                    
-                    // เพิ่มขีดที่ตำแหน่งที่ 9 (หลังตัวที่ 8)
-                    if (value.length >= 8) {
-                      formatted += '-';
-                    }
-                    
-                    // ส่วนที่ 3: 5 ตัวอักษร
-                    if (value.length >= 9) {
-                      formatted += value.substring(8, Math.min(13, value.length));
-                    }
-                    
-                    // เพิ่มขีดที่ตำแหน่งที่ 15 (หลังตัวที่ 13)
-                    if (value.length >= 13) {
-                      formatted += '-';
-                    }
-                    
-                    // ส่วนที่ 4: 4 ตัวอักษร (รวมทั้งหมด 17 ตัว)
-                    if (value.length >= 14) {
-                      formatted += value.substring(13, Math.min(17, value.length));
-                    }
-                    
-                    value = formatted;
-                  }
-                  
                   step3LicenseKey = value;
-                  
-                  // ตั้ง cursor position ให้ถูกต้อง
-                  setTimeout(() => {
-                    let newCursorPos = originalCursorPos;
-                    
-                    // ถ้าลบตัว (ความยาวใหม่น้อยกว่าเดิม)
-                    if (value.length < originalLength) {
-                      // คำนวณตำแหน่ง cursor ใหม่โดยลบขีดที่ถูกลบออก
-                      const removedDashes = originalLength - value.length;
-                      newCursorPos = Math.max(0, originalCursorPos - removedDashes);
-                    } else if (value.length > originalLength) {
-                      // ถ้าพิมพ์ตัวใหม่ ให้ cursor อยู่ท้ายสุด
-                      newCursorPos = value.length;
-                    }
-                    
-                    target.setSelectionRange(newCursorPos, newCursorPos);
-                  }, 0);
                 }}
               required
               autocomplete="off"
               spellcheck="false"
-                              maxlength="21"
+                              maxlength="35"
               />
             {#if inputError}
                 <div class="input-error">{inputError}</div>
@@ -500,9 +434,7 @@
                   const target = e.target as HTMLInputElement;
                   let value = target.value;
                   
-                  // เก็บตำแหน่ง cursor และความยาวเดิม
-                  const originalCursorPos = target.selectionStart || 0;
-                  const originalLength = vipLicenseKey.length;
+                  // ไม่ต้องจัดการ cursor position
                   
 
                   
@@ -511,72 +443,16 @@
                   // แปลงเป็นตัวใหญ่
                   value = value.toUpperCase();
                   
-                  // ลบเครื่องหมาย - ทั้งหมดก่อน
-                  value = value.replace(/-/g, '');
-                  
-                  // เพิ่มเครื่องหมาย - ตามรูปแบบ LIFE-ARTY-A7K9M-3X8F
-                  if (value.length > 0) {
-                    let formatted = '';
-                    
-                    // ส่วนที่ 1: 4 ตัวอักษร
-                    formatted += value.substring(0, Math.min(4, value.length));
-                    
-                    // เพิ่มขีดที่ตำแหน่งที่ 4 (หลังตัวที่ 4)
-                    if (value.length >= 4) {
-                      formatted += '-';
-                    }
-                    
-                    // ส่วนที่ 2: 4 ตัวอักษร
-                    if (value.length >= 5) {
-                      formatted += value.substring(4, Math.min(8, value.length));
-                    }
-                    
-                    // เพิ่มขีดที่ตำแหน่งที่ 9 (หลังตัวที่ 8)
-                    if (value.length >= 8) {
-                      formatted += '-';
-                    }
-                    
-                    // ส่วนที่ 3: 5 ตัวอักษร
-                    if (value.length >= 9) {
-                      formatted += value.substring(8, Math.min(13, value.length));
-                    }
-                    
-                    // เพิ่มขีดที่ตำแหน่งที่ 15 (หลังตัวที่ 13)
-                    if (value.length >= 13) {
-                      formatted += '-';
-                    }
-                    
-                    // ส่วนที่ 4: 4 ตัวอักษร (รวมทั้งหมด 17 ตัว)
-                    if (value.length >= 14) {
-                      formatted += value.substring(13, Math.min(17, value.length));
-                    }
-                    
-                    value = formatted;
-                  }
+                  // ไม่ต้อง format อัตโนมัติ - ให้กรอกได้ 32 ตัวอักษร
                   
                   vipLicenseKey = value;
                   
-                  // ตั้ง cursor position ให้ถูกต้อง
-                  setTimeout(() => {
-                    let newCursorPos = originalCursorPos;
-                    
-                    // ถ้าลบตัว (ความยาวใหม่น้อยกว่าเดิม)
-                    if (value.length < originalLength) {
-                      // คำนวณตำแหน่ง cursor ใหม่โดยลบขีดที่ถูกลบออก
-                      const removedDashes = originalLength - value.length;
-                      newCursorPos = Math.max(0, originalCursorPos - removedDashes);
-                    } else if (value.length > originalLength) {
-                      // ถ้าพิมพ์ตัวใหม่ ให้ cursor อยู่ท้ายสุด
-                      newCursorPos = value.length;
-                    }
-                    
-                    target.setSelectionRange(newCursorPos, newCursorPos);
-                  }, 0);
+                  // ไม่ต้องจัดการ cursor position
                 }}
                 required
                 autocomplete="off"
                 spellcheck="false"
-                maxlength="21"
+                maxlength="35"
               />
               {#if inputError}
                   <div class="vip-popup-error-msg">{inputError}</div>
