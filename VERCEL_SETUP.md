@@ -22,9 +22,10 @@
 - ไม่ต้องเลือก Svelte เพราะเราแค่ต้องการ deploy API
 
 #### **Build Settings:**
-- **Build Command:** `echo "No build needed for API"`
-- **Output Directory:** `api`
-- **Install Command:** `npm install`
+- **Framework Preset:** เลือก **"Other"**
+- **Build Command:** (ไม่ต้องใส่ - ใช้ default)
+- **Output Directory:** (ไม่ต้องใส่ - ใช้ default)
+- **Install Command:** (ไม่ต้องใส่ - ใช้ default)
 
 ### **4. ตั้งค่า Environment Variables**
 
