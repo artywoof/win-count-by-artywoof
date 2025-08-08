@@ -12,6 +12,39 @@ CREATE TABLE IF NOT EXISTS licenses (
     notes TEXT -- หมายเหตุเพิ่มเติม (เช่น Discord username)
 );
 
+-- เพิ่มคอลัมน์ discord_id ถ้ายังไม่มี (สำหรับตารางเก่า)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'licenses' AND column_name = 'discord_id'
+    ) THEN
+        ALTER TABLE licenses ADD COLUMN discord_id TEXT;
+    END IF;
+END $$;
+
+-- เพิ่มคอลัมน์ last_heartbeat ถ้ายังไม่มี
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'licenses' AND column_name = 'last_heartbeat'
+    ) THEN
+        ALTER TABLE licenses ADD COLUMN last_heartbeat TIMESTAMPTZ;
+    END IF;
+END $$;
+
+-- เพิ่มคอลัมน์ heartbeat_count ถ้ายังไม่มี
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'licenses' AND column_name = 'heartbeat_count'
+    ) THEN
+        ALTER TABLE licenses ADD COLUMN heartbeat_count INTEGER DEFAULT 0;
+    END IF;
+END $$;
+
 -- สร้าง Index เพื่อให้การค้นหาเร็วขึ้น
 CREATE INDEX IF NOT EXISTS idx_licenses_machine_id ON licenses(machine_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_license_key ON licenses(license_key);
