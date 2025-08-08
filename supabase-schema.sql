@@ -120,7 +120,7 @@ BEGIN
     END IF;
     
     -- สร้าง license key ใหม่ (MD5 hash)
-    new_license_key := encode(md5(p_machine_id || extract(epoch from now())::text || random()::text), 'hex');
+    new_license_key := md5(p_machine_id || extract(epoch from now())::text || random()::text);
     new_license_key := upper(substring(new_license_key from 1 for 32));
     
     -- คำนวณวันหมดอายุ
