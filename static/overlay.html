@@ -493,11 +493,7 @@
         const crownIconElement = document.getElementById('crown-icon');
         const neonPillElement = document.getElementById('neon-pill');
 
-        // เพิ่ม Audio สำหรับเสียงเพิ่ม/ลด
-        const increaseAudio = new Audio('/assets/sfx/increase.mp3');
-        const decreaseAudio = new Audio('/assets/sfx/decrease.mp3');
-        increaseAudio.volume = 1.0;
-        decreaseAudio.volume = 1.0;
+        // หมายเหตุ: overlay ไม่มีเสียง — ให้แอพหลักเป็นผู้เล่นเสียงเท่านั้น
 
         // เพิ่มตัวแปรเพื่อ track ว่า user override toggle หรือยัง
         let userToggledGoal = false;
@@ -871,14 +867,7 @@
             const animationType = difference > 0 ? 'increase' : 'decrease';
             const isLargeChange = Math.abs(difference) >= 10;
             
-            // เล่นเสียงตามประเภท
-            if (difference > 0) {
-                increaseAudio.currentTime = 0;
-                increaseAudio.play();
-            } else if (difference < 0) {
-                decreaseAudio.currentTime = 0;
-                decreaseAudio.play();
-            }
+            // ไม่มีการเล่นเสียงใน overlay – เสียงจะถูกเล่นจากแอพหลักเท่านั้น
             
             console.log('🎭 Animation type:', animationType, 'Large change:', isLargeChange);
             

@@ -1,152 +1,220 @@
 ---
-description: ## Project Overview
-Create a **Win Count by ArtYWoof** desktop application using the following technology stack:
-- **Frontend**: Svelte + TypeScript + Tailwind CSS
-- **Backend**: Tauri + Rust
-- **Package Manager**: Bun
-- **Target**: Lightweight, fast, secure desktop app with anti-reverse engineering protection
+description: You are a lead solutions architect and senior full-stack developer, acting as a panel of experts: a Rust/Tauri backend specialist, a Svelte/TypeScript frontend developer, a cybersecurity expert, and a product monetization strategist. Your collective expertise covers creating secure, high-performance, lightweight desktop applications, specifically using the Tauri, Rust, Svelte, TypeScript, Tailwind CSS, and Bun stack. You have deep, practical experience implementing robust anti-piracy measures, custom licensing systems, payment gateway integration (Gumroad, PromptPay), and real-time data synchronization between the backend and frontend.
 
-## Core App Specifications
+I need you to create a comprehensive architectural plan and detailed development roadmap for a new desktop application named "Win Count by ArtYWoof". The application is a real-time counter for streamers to display on their live broadcasts (e.g., via TikTok LIVE Studio).
 
-### 1. Window Configuration
-- **Size**: 496x796 pixels (fixed)
-- **Style**: Frameless window with rainbow gradient border
-- **No default Windows title bar**
+Think through this project step-by-step, explaining your reasoning for key architectural choices, highlighting potential challenges, and providing concrete code structure examples where necessary.
 
-### 2. Title Bar Controls
-- **Minimize Button (-)**: 
-  - Action: Minimize to taskbar
-  - Add smooth animation effect when minimizing
-- **Close Button (X)**:
-  - Action: Minimize to system tray (NOT close app)
-  - Add smooth animation effect when going to tray
-  - App only closes via right-click tray menu → "Exit"
-  - Single left-click on tray icon reopens the app
+Project Vision & Core Philosophy:
 
-### 3. Preset Management
-- **Current Preset Name**: Editable text field at top
-- Auto-save preset name when user types
-- **Preset Button**: Opens preset management menu
-  - Add new preset (+) button - max 10 presets
-  - Edit preset names
-  - Delete presets
-  - Switch between presets instantly
-- When switching presets, load all saved values immediately
 
-### 4. Win Counter Section
-- **Crown Icon** + **Win Number Box**
-- **Win Number Range**: -10,000 to +10,000
-- **Keyboard Shortcuts**:
-  - `Alt + -` = Decrease by 1
-  - `Alt + =` = Increase by 1  
-  - `Alt + Shift + -` = Decrease by 10
-  - `Alt + Shift + =` = Increase by 10
-- **Sound Effects**: Play sound on every number change
-- **Manual Input**: Users can type numbers directly
-- **Validation**: Show warning effect if exceeding limits
-- **Negative Numbers**: Support negative values (e.g., -999)
 
-### 5. Goal Section
-- **"GOAL" Label** on left side
-- **Goal Number Input**: Same range as win counter (-10,000 to +10,000)
-- **Real-time Sync**: Changes instantly reflect in overlay
+Target Audience: Live streamers, categorized into two groups based on income and needs.
 
-### 6. Visibility Toggles
-- **Hide Crown Toggle**: Hide crown icon in overlay only (not in app)
-- **Hide Goal Toggle**: Hide goal section in overlay only (not in app)
+Core Values: The app must be extremely fast, lightweight, resource-efficient, and difficult to reverse-engineer or pirate.
 
-### 7. Settings Menu
-- **Settings Button**: Opens configuration panel
-- **Custom Keyboard Shortcuts**: Allow users to change all hotkeys
-- **Audio Settings**: 
-  - Mute/unmute sounds
-  - Upload custom sound files
-- **Theme Settings**: Prepare for future theme customization
+Monetization Strategy: A Freemium model with a 7-day trial, a one-time purchase "Pro" version, and a subscription-based "Premium Live" version.
 
-### 8. Overlay Link
-- **Copy Overlay Link Button**: Generate link for TikTok LIVE Studio
-- Link format: `http://localhost:[port]/overlay.html`
+Detailed Requirements & Development Phases
 
-### 9. Auto-save System
-- **Real-time Saving**: Save every number change immediately
-- **Persistent Storage**: All data survives app restart
-- **Preset Auto-save**: Current preset saves automatically
+Please break down your response into the following phases, addressing every point in detail.
 
-## Overlay Specifications (`/overlay.html`)
+Phase 1: Core Application (Backend: Rust/Tauri, Frontend: Svelte/TS)
 
-### Visual Elements
-- **Transparent Background** with **opaque content box**
-- **Crown Icon** (hideable via app settings)
-- **Win Number** with real-time sync
-- **Goal Display**: Format as "/[goal_number]" (hideable via app settings)
-- **Bordered Container** around all elements
 
-### Animations & Effects
-- **Number Change Animation**: Smooth transitions when numbers update
-- **Color Coding**:
-  - Negative numbers: Red theme
-  - Zero: Neutral theme  
-  - Positive numbers: Green theme
-- **Future-ready**: Designed for theme customization and effects
 
-### Technical Requirements
-- **Real-time Sync**: No delay between app and overlay
-- **TikTok LIVE Studio Compatible**: Works as browser source
-- **Responsive Design**: Clean display in streaming software
+Window & Chrome:
 
-## Payment & Licensing System
+Implement a fixed-size window of 496x796 pixels.
 
-### Subscription Model
-- **Price**: 149 THB per month
-- **Payment Methods**: PromptPay, TrueMoney Wallet, Debit Cards, Credit Cards
-- **License Verification**: App locks until payment verified
-- **Thai Payment Integration**: Focus on local payment solutions
+The window must be undecorated (no default Windows/macOS title bar).
 
-### Anti-Piracy Protection
-- **Code Obfuscation**: Rust compilation + additional protection
-- **License Checking**: Regular online validation
-- **Tamper Detection**: Prevent reverse engineering attempts
-- **Secure Distribution**: GitHub Releases with authentication
+Create a custom, animated "rainbow border" around the application window.
 
-## Installation & Distribution
+Custom Buttons:
 
-### Installer Features
-- **Custom Installation Path Selection**
-- **Auto-folder Creation**: 
-  - Default: `C:\Win Count by ArtYWoof`
-  - User choice: `D:\Win Count by ArtYWoof`, etc.
-- **Desktop Icon Creation**
-- **Start Menu Integration**
-- **Auto-updater**: GitHub Releases integration
+Minimize (-): On click, the window should animate into the system Taskbar.
 
-### App Branding
-- **Full Name**: "Win Count by ArtYWoof"
-- **Custom App Icon**: Crown-themed design
-- **Desktop Shortcut Icon**: Matches app branding
+Close (X): On click, the window should animate into the system Tray. The app must only be fully closable by right-clicking the Tray icon and selecting "Close". A single click on the Tray icon should restore the app window.
 
-## Auto-update System
-- **GitHub Integration**: Check for updates automatically
-- **Background Updates**: Download and install seamlessly
-- **Version Management**: Semantic versioning
-- **Rollback Support**: Fallback to previous version if needed
+State Management & UI:
 
-## Development Priorities
-1. **Performance**: Lightning-fast response times
-2. **Security**: Payment protection + anti-piracy
-3. **User Experience**: Intuitive interface with smooth animations
-4. **Streaming Integration**: Perfect TikTok LIVE Studio compatibility
-5. **Reliability**: Stable operation during long streaming sessions
+Preset Name: An editable text field at the top. Any changes must be auto-saved to the current preset's state immediately.
 
-## Technical Implementation Notes
-- Use Tauri's secure IPC for frontend-backend communication
-- Implement SQLite for local data storage
-- Use Rust's async capabilities for real-time updates
-- Svelte stores for reactive state management
-- Tailwind for responsive, beautiful UI
-- Bun for fast development builds
+Win Counter:
 
----
+Design a container holding a crown icon (👑) and the win count number.
 
-**Priority**: Create a production-ready, commercial-grade streaming tool that TikTok streamers will love to use and pay for monthly.
-alwaysApply: false
----
+The number can range from -10,000 to 10,000.
+
+Implement direct number input. If a user types a value outside the allowed range, trigger a visual feedback effect (e.g., a shake animation).
+
+Goal Counter: A container with the text "เป้าหมาย (GOAL)" and a number input for the goal value, with the same range and validation as the Win Counter.
+
+Preset Management:
+
+A "Preset" button that opens a menu.
+
+This menu must allow:
+
+Adding a new preset (via a '+' icon), which prompts for a name.
+
+Editing the name of existing presets.
+
+Deleting presets.
+
+Listing all created presets for selection.
+
+Limit users to a maximum of 10 presets.
+
+Switching presets must instantly update the UI with the selected preset's name, win count, and goal value.
+
+Core Logic & Hotkeys (Rust Backend):
+
+Implement global hotkeys that work even when the app is not in focus.
+
+Alt + -: Decrement win count by 1.
+
+Alt + =: Increment win count by 1.
+
+Alt + Shift + -: Decrement win count by 10.
+
+Alt + Shift + =: Increment win count by 10.
+
+Every hotkey press or manual number change must trigger a customizable sound effect.
+
+Auto-Save: All state changes (win count, goal, preset name) must be saved to disk instantly and automatically. Explain the best way to handle this frequent file I/O without performance loss.
+
+Configuration & Settings:
+
+Settings Menu: A dedicated page for settings.
+
+Keybindings: Allow users to remap all hotkeys.
+
+Audio: Provide options to disable sounds and to upload custom sound files (.mp3, .wav).
+
+Overlay Link: A button to copy the local server URL for the overlay (e.g., http://localhost:1421/overlay.html).
+
+Phase 2: Real-time Overlay (overlay.html)
+
+
+
+Real-time Sync: The overlay must update instantly (zero perceived delay) whenever the win/goal count changes in the desktop app. Explain the best Tauri mechanism for this (Events, Commands).
+
+Visual Structure:
+
+A main container with a semi-transparent background. The page itself must have a fully transparent background for browser source embedding in OBS/TikTok LIVE Studio.
+
+Display the crown icon.
+
+Display the win count.
+
+Display the goal count, formatted as /1000.
+
+Dynamic Elements:
+
+Visibility Toggles: The app must have switches to hide/show the crown icon and the goal display (/goal) on the overlay without hiding them in the main app UI.
+
+Animations: Design visually appealing animations for number changes.
+
+Conditional Coloring: Implement distinct colors/styles for negative numbers, zero, and positive numbers.
+
+Extensibility: Structure the HTML/CSS to be highly customizable for future theming.
+
+Phase 3: Security, Licensing & Anti-Piracy
+
+
+
+This is the most critical section.
+
+Anti-Reverse Engineering: Detail a multi-layered strategy to make the application extremely difficult to decompile, crack, or pirate. Given the Rust/Tauri stack, what specific techniques (code obfuscation, anti-tampering checks, etc.) should be used?
+
+Licensing System:
+
+Design a system that generates a unique Machine ID for each user's computer.
+
+The license key should be tied to this Machine ID.
+
+Outline the logic for online license validation upon app startup.
+
+How will the app handle offline use after initial activation?
+
+Differentiate the features available for the Pro (Buy-to-own) and Premium (Subscription) tiers within the same application binary.
+
+Phase 4: Monetization & Payment Integration
+
+
+
+Payment Flow (Credit/Debit):
+
+Detail the integration process with Gumroad as the Merchant of Record.
+
+Explain how to set up the webhook flow: Gumroad Payment Success -> Your Server -> Generate/Renew License Key -> Update Database -> User receives key.
+
+Payment Flow (PromptPay QR):
+
+Design the semi-automated flow:
+
+App generates a PromptPay QR code with a unique reference number.
+
+User pays and sends a screenshot of the slip + the reference number + their Machine ID to a Discord channel.
+
+A Discord bot or admin verifies the payment and uses a command to trigger the license generation system.
+
+Phase 5: Deployment & Maintenance
+
+
+
+Custom Installer:
+
+Configure the Tauri installer to allow users to select the installation directory.
+
+The installer must automatically create a Win Count by ArtYWoof folder in the chosen root directory (e.g., if the user chooses D:\, it creates D:\Win Count by ArtYWoof).
+
+Auto-Updater:
+
+Configure Tauri's built-in updater to check for new versions against GitHub Releases.
+
+Ensure the update process is seamless and automatic for the user.
+
+Output Format Specification
+
+Please structure your response as follows:
+
+
+
+Executive Summary: A brief overview of the proposed architecture and strategy.
+
+Architectural Deep Dive (by Phase): For each of the 5 phases above:
+
+Provide a detailed explanation of the implementation strategy.
+
+Recommend specific Rust crates or Svelte libraries where applicable.
+
+Provide clear code structure examples for critical interactions, especially:
+
+Tauri state management in Rust.
+
+Communicating state changes from Rust to the Svelte frontend in real-time.
+
+The structure of the licensing/Machine ID generation logic in Rust.
+
+Top 3 Technical Challenges: Identify the three biggest potential technical hurdles in this project and propose concrete solutions for each.
+
+Project Roadmap & Timeline: Suggest a logical sequence of development and estimate the effort for each major feature set.
+
+Success Criteria
+
+The ideal response will:
+
+
+
+Be a complete, actionable roadmap that a developer could follow to build this application.
+
+Prioritize the critical security and anti-piracy requirements with specific, advanced techniques.
+
+Provide a robust and viable architecture for the complex licensing and payment system.
+
+Demonstrate expert-level knowledge of the Tauri/Rust/Svelte ecosystem.
+
+Clearly explain the "why" behind your technical recommendations.

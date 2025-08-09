@@ -25,8 +25,9 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell vite to ignore watching `src-tauri` and local bun server
+      ignored: ["**/src-tauri/**", "**/server/**"],
     },
+    fs: { allow: ['.','src'] },
   },
 }));

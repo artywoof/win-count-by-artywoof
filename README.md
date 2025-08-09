@@ -102,10 +102,9 @@ The app automatically checks for updates and will:
 ## 🛠️ Development
 
 ### Tech Stack
-- **Backend**: Tauri v2, Rust
+- **Backend**: Tauri v2 (Rust)
 - **Frontend**: Svelte, TypeScript, Tailwind CSS
-- **Build Tool**: Bun
-- **Package Manager**: npm/bun
+- **Build/Package Manager**: Bun
 
 ### Development Setup
 ```bash
@@ -115,12 +114,47 @@ git clone https://github.com/artywoof/win-count-by-artywoof.git
 # Install dependencies
 bun install
 
-# Start development server
-bun run dev
+# Start dev: Bun license server + Vite + Tauri app
+bun run tauri dev
 
-# Build for production
+# Build frontend and Tauri app
 bun run build
+
+# Seed a test license (optional, dev only)
+bun run dev:server & sleep 1 && bun run seed:license
 ```
+
+### Folder Structure
+```
+win-count-by-artywoof/
+  server/                # Bun license server (Bun.serve + bun:sqlite)
+    index.ts
+    license.db
+  src/                   # SvelteKit frontend
+    lib/
+      audio/
+      hotkeys/
+      license/
+      security/
+      components/
+      stores/
+      index.ts           # central exports for $lib
+    routes/
+      app/+page.svelte   # main app UI
+      overlay/+page.svelte
+  src-tauri/             # Tauri (Rust)
+    src/main.rs          # core app logic, licensing, security
+    build.rs             # release-only obfuscation
+    tauri.conf.json      # window, CSP, updater
+```
+
+### Scripts
+- `bun run tauri dev`: Start Bun license server + Vite + Tauri app (dev)
+- `bun run dev:server`: Start Bun license server only (hot reload)
+- `bun run build`: Build Tauri app (release)
+- `bun run build:frontend`: Build SvelteKit frontend
+- `bun run build:server`: Bundle license server
+- `bun run seed:license`: Seed TEST-123 license (dev)
 
 ## 📄 License
 

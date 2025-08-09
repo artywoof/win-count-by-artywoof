@@ -10,26 +10,28 @@
 	},
 	"type": "module",
 	"scripts": {
-		"dev": "tauri dev",
-		"dev:vite": "vite dev",
+    "dev": "tauri dev",
+    "dev:vite": "vite dev",
+    "dev:all": "bun run dev:server & bun run dev:vite",
+    "dev:server": "bun --hot server/index.ts",
 		"build": "tauri build",
 		"build:frontend": "vite build",
-		"build:api": "echo 'API build completed'",
+    "build:server": "bun build server/index.ts --outfile dist/license-server.js",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
-		"lint": "prettier --check .",
-		"dev:all": "bun dev",
+    "lint": "prettier --check .",
 		"test:overlay": "start-server-and-test dev:all http://localhost:5173 bunx playwright test",
+    "seed:license": "powershell -NoProfile -Command \"$env:LICENSE_SECRET='13897ArtYWoof33!'; $mid=(Get-Content $env:LOCALAPPDATA'\\Win Count by ArtYWoof\\win_count_license.json' -ErrorAction SilentlyContinue | Out-String); if(-not $mid){$mid='';}; Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/admin/create -Headers @{Authorization='Bearer '+$env:LICENSE_SECRET} -ContentType 'application/json' -Body '{\\\"license_key\\\":\\\"TEST-123\\\",\\\"machine_id\\\":\\\"' + $mid + '\\\",\\\"duration_days\\\":30}'\"",
 		"tauri": "tauri",
 		"release": "bun run release:patch",
 		"release:patch": "bun version patch && git push && git push --tags",
 		"release:minor": "bun version minor && git push && git push --tags",
 		"release:major": "bun version major && git push && git push --tags"
 	},
-	"devDependencies": {
+  "devDependencies": {
 		"@playwright/test": "^1.53.1",
 		"@sveltejs/adapter-auto": "^6.0.0",
 		"@sveltejs/adapter-static": "^3.0.8",
@@ -47,19 +49,14 @@
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.2.2",
 		"tailwind-scrollbar": "^4.0.2",
-		"tailwindcss": "^4.1.10",
+    "tailwindcss": "^4.1.10",
 		"tailwindcss-animate": "^1.0.7",
 		"typescript": "^5.0.0",
-		"vite": "^6.2.6"
+    "vite": "^6.2.6",
+    "@tauri-apps/cli": "^2.6.2"
 	},
-	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.13.2",
-		"@stripe/stripe-js": "^2.4.0",
-		"@supabase/supabase-js": "^2.39.0",
-		"@tauri-apps/api": "^1.5.0",
-		"@tauri-apps/cli": "^2.6.2",
-		"cors": "^2.8.5",
-		"express": "^5.1.0",
-		"tailwindcss-textshadow": "^2.1.3"
-	}
+  "dependencies": {
+    "@tauri-apps/api": "^2.6.0",
+    "tailwindcss-textshadow": "^2.1.3"
+  }
 }

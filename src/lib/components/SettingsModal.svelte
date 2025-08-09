@@ -1,9 +1,9 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import audioManager from '$lib/audioManager';
+  import audioManager from '$lib/audio/audioManager';
   import { hotkeySettings, keybindToString, type Keybind } from '$lib/stores';
-  import { registerHotkeysFromSettings, getHotkeyConflicts } from '$lib/hotkeyManager';
+  import { registerHotkeysFromSettings, getHotkeyConflicts } from '$lib/hotkeys/hotkeyManager';
 
   import ErrorDisplay from './ErrorDisplay.svelte';
 
@@ -13,7 +13,7 @@
   let audioSettings = audioManager.getSettings();
   let customSoundFile: FileList | null = null;
   let uploadingSoundFor = '';
-  let uploadMessage = '';
+  let uploadMessage: string | null = '' as any;
 
   // Volume debounce
   let volumeDebounceTimer: number | null = null;

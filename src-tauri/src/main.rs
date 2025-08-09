@@ -1,5 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![allow(unused_imports, dead_code, unused_variables, unreachable_code, static_mut_refs)]
 
 // Anti-Debugging: Block debug builds in production
 // Debug build protection disabled for development
@@ -23,6 +24,8 @@ use tokio_tungstenite::accept_async;
 use serde_json;
 use std::env;
 use sha2::{Digest, Sha256};
+use base64::{engine::general_purpose, Engine as _};
+use aes_gcm::{Aes256Gcm, aead::{Aead, KeyInit}, Nonce};
 use chrono::{Utc, DateTime};
 use std::fs::File;
 use std::io::{Read};
@@ -32,6 +35,47 @@ use std::sync::atomic::AtomicBool;
 // PromptPay module removed - using promptpay.io instead
 
 // License system removed
+
+// ===== Secure storage helpers (AES-GCM with machine-bound key) =====
+fn crypto_secret() -> String {
+    std::env::var("LICENSE_CRYPTO_SECRET").unwrap_or_else(|_| "WINCOUNT_DEFAULT_SECRET".to_string())
+}
+
+fn derive_aes_key(machine_id: &str) -> [u8; 32] {
+    let secret = crypto_secret();
+    let mut hasher = Sha256::new();
+    hasher.update(machine_id.as_bytes());
+    hasher.update(":");
+    hasher.update(secret.as_bytes());
+    let result = hasher.finalize();
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&result);
+    key
+}
+
+fn encrypt_for_machine(plaintext: &str, machine_id: &str) -> Result<String, String> {
+    let key_bytes = derive_aes_key(machine_id);
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| format!("cipher init error: {}", e))?;
+    let mut nonce_bytes = [0u8; 12];
+    getrandom::getrandom(&mut nonce_bytes).map_err(|e| format!("nonce error: {}", e))?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes()).map_err(|e| format!("encrypt error: {}", e))?;
+    let mut combined = Vec::with_capacity(12 + ciphertext.len());
+    combined.extend_from_slice(&nonce_bytes);
+    combined.extend_from_slice(&ciphertext);
+    Ok(general_purpose::STANDARD.encode(combined))
+}
+
+fn decrypt_for_machine(b64: &str, machine_id: &str) -> Result<String, String> {
+    let data = general_purpose::STANDARD.decode(b64).map_err(|e| format!("base64 error: {}", e))?;
+    if data.len() < 13 { return Err("cipher too short".into()); }
+    let (nonce_bytes, ct) = data.split_at(12);
+    let key_bytes = derive_aes_key(machine_id);
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| format!("cipher init error: {}", e))?;
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let plaintext = cipher.decrypt(nonce, ct).map_err(|e| format!("decrypt error: {}", e))?;
+    String::from_utf8(plaintext).map_err(|e| format!("utf8 error: {}", e))
+}
 
 #[cfg(windows)]
 use winapi::um::winuser::{GetAsyncKeyState, VK_MENU, VK_OEM_PLUS, VK_OEM_MINUS};
@@ -372,14 +416,41 @@ fn get_app_version() -> Result<String, String> {
 }
 
 // License management functions
-const L1C3NS3_S3RV3R: &str = "https://win-count-by-artywoof-miy1mgiyx-artywoofs-projects.vercel.app/api";
+fn license_server_url() -> String {
+    let url = std::env::var("LICENSE_SERVER_URL").unwrap_or_else(|_| "http://127.0.0.1:8765".to_string());
+    #[cfg(not(debug_assertions))]
+    {
+        // Enforce HTTPS in release
+        if !url.starts_with("https://") {
+            eprintln!("[SECURITY] LICENSE_SERVER_URL must be https in release. Current: {}", url);
+        }
+    }
+    url
+}
 
 // License validation function
 fn x7y9z2() -> bool {
+    // In development builds, bypass license check for DX
+    #[cfg(debug_assertions)]
+    {
+        return true;
+    }
     // Check if license file exists and is valid
     if let Ok(license_path) = get_app_data_file("win_count_license.json") {
-        if let Ok(license_content) = fs::read_to_string(&license_path) {
-            if let Ok(license_data) = serde_json::from_str::<serde_json::Value>(&license_content) {
+        if let Ok(file_content) = fs::read_to_string(&license_path) {
+            // decrypt if needed
+            let machine_id_for_dec = m4c5h6n().ok();
+            let json_text = if file_content.trim_start().starts_with('{') {
+                file_content
+            } else if let Some(mid) = machine_id_for_dec {
+                match decrypt_for_machine(&file_content, &mid) {
+                    Ok(txt) => txt,
+                    Err(e) => { println!("[SECURITY] decrypt failed: {}", e); return false; }
+                }
+            } else {
+                return false;
+            };
+            if let Ok(license_data) = serde_json::from_str::<serde_json::Value>(&json_text) {
                 if let Some(license_key) = license_data.get("license_key").and_then(|v| v.as_str()) {
                     // Enhanced validation - check with server
                     if let Ok(machine_id) = m4c5h6n() {
@@ -387,18 +458,25 @@ fn x7y9z2() -> bool {
                         let rt = tokio::runtime::Runtime::new().unwrap();
                         let result = rt.block_on(async {
                             let client = reqwest::Client::new();
-                            let url = format!("{}/verify-license", L1C3NS3_S3RV3R);
+                            let url = format!("{}/verify-license", license_server_url());
                             if !url.starts_with("https://") {
-                                println!("[SECURITY] License server URL is not HTTPS!");
-                                return false;
+                                #[cfg(not(debug_assertions))]
+                                {
+                                    println!("[SECURITY] License server URL is not HTTPS!");
+                                    return false;
+                                }
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("[SECURITY] License server URL is not HTTPS (dev allowed)");
+                                }
                             }
                             let response = client
                                 .post(&url)
                                 .header("Content-Type", "application/json")
-                                .body(format!(
-                                    r#"{{\"license_key\":\"{}\",\"machine_id\":\"{}\"}}"#,
-                                    license_key, machine_id
-                                ))
+                                .json(&serde_json::json!({
+                                    "license_key": license_key,
+                                    "machine_id": machine_id,
+                                }))
                                 .send()
                                 .await;
                             match response {
@@ -439,6 +517,39 @@ fn x7y9z2() -> bool {
 }
 
 #[tauri::command]
+fn get_license_key() -> Result<Option<String>, String> {
+    if let Ok(license_path) = get_app_data_file("win_count_license.json") {
+        if let Ok(file_content) = fs::read_to_string(&license_path) {
+            if let Ok(mid) = m4c5h6n() {
+                let json_text = if file_content.trim_start().starts_with('{') {
+                    file_content
+                } else {
+                    match decrypt_for_machine(&file_content, &mid) {
+                        Ok(txt) => txt,
+                        Err(_) => return Ok(None),
+                    }
+                };
+                if let Ok(license_data) = serde_json::from_str::<serde_json::Value>(&json_text) {
+                    if let Some(license_key) = license_data.get("license_key").and_then(|v| v.as_str()) {
+                        return Ok(Some(license_key.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+fn remove_license_key() -> Result<(), String> {
+    let license_path = get_app_data_file("win_count_license.json")?;
+    if std::path::Path::new(&license_path).exists() {
+        fs::remove_file(&license_path).map_err(|e| format!("Failed to remove license file: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn a1b2c3d4(license_key: String) -> Result<bool, String> {
     // ไม่ต้องตรวจสอบ License สำหรับการตรวจสอบ License Key เพราะเป็นฟังก์ชันการตรวจสอบ License
     println!("🔑 Validating license key: {}", license_key);
@@ -448,18 +559,25 @@ async fn a1b2c3d4(license_key: String) -> Result<bool, String> {
     
     // Prepare request to license server
     let client = reqwest::Client::new();
-    let url = format!("{}/verify-license", L1C3NS3_S3RV3R);
+    let url = format!("{}/verify-license", license_server_url());
     if !url.starts_with("https://") {
-        println!("[SECURITY] License server URL is not HTTPS!");
-        return Err("License server URL is not HTTPS".to_string());
+        #[cfg(not(debug_assertions))]
+        {
+            println!("[SECURITY] License server URL is not HTTPS!");
+            return Err("License server URL is not HTTPS".to_string());
+        }
+        #[cfg(debug_assertions)]
+        {
+            println!("[SECURITY] License server URL is not HTTPS (dev allowed)");
+        }
     }
     let response = client
         .post(&url)
         .header("Content-Type", "application/json")
-        .body(format!(
-            r#"{{\"license_key\":\"{}\",\"machine_id\":\"{}\"}}"#,
-            license_key, machine_id
-        ))
+        .json(&serde_json::json!({
+            "license_key": license_key,
+            "machine_id": machine_id,
+        }))
         .send()
         .await;
     
@@ -519,18 +637,20 @@ fn s4v3k3y(key: String) -> Result<(), String> {
     // ไม่ต้องตรวจสอบ License สำหรับการบันทึก License Key เพราะเป็นฟังก์ชันการตั้งค่า License
     println!("💾 Saving license key: {}", key);
     
-    // Save to app data directory
+    // Save to app data directory (encrypted)
     let license_path = get_app_data_file("win_count_license.json")?;
+    let machine_id = m4c5h6n()?;
     let license_data = serde_json::json!({
         "license_key": key,
         "saved_at": chrono::Utc::now().to_rfc3339(),
-        "machine_id": m4c5h6n()?
+        "machine_id": machine_id
     });
-    
-    let license_json = serde_json::to_string_pretty(&license_data)
+
+    let license_json = serde_json::to_string(&license_data)
         .map_err(|e| format!("Failed to serialize license data: {}", e))?;
-    
-    fs::write(license_path, license_json)
+
+    let encrypted = encrypt_for_machine(&license_json, &machine_id)?;
+    fs::write(license_path, encrypted)
         .map_err(|e| format!("Failed to save license key: {}", e))?;
     
     println!("✅ License key saved successfully");
@@ -2611,7 +2731,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
 
-        .invoke_handler(tauri::generate_handler![greet, get_app_version, a1b2c3d4, s4v3k3y, m4c5h6n, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart, create_promptpay_qr])
+        .invoke_handler(tauri::generate_handler![greet, get_app_version, a1b2c3d4, s4v3k3y, m4c5h6n, update_hotkey, reload_hotkeys_command, test_hotkeys, get_win_state, set_win_state, minimize_app, hide_to_tray, show_from_tray, increase_win, decrease_win, increase_win_by_step, decrease_win_by_step, set_win, set_goal, toggle_goal_visibility, toggle_crown_visibility, copy_overlay_link, save_preset, load_presets, load_preset, delete_preset, rename_preset, play_test_sounds, clear_hotkeys, save_default_hotkeys, check_hotkey_file, save_custom_sound, get_custom_sound_path, delete_custom_sound, read_sound_file, get_custom_sound_filename, check_for_updates, download_and_install_update, install_update_and_restart, create_promptpay_qr, get_license_key, remove_license_key])
         .setup({
             let shared_state = Arc::clone(&shared_state);
             let broadcast_tx = broadcast_tx.clone();
@@ -2899,7 +3019,12 @@ fn start_security_monitor(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(30));
-            
+            // In development, disable harsh security exits to allow workflow
+            #[cfg(debug_assertions)]
+            {
+                continue;
+            }
+
             // Anti-Debugging Detection
             if is_debugger_present() || detect_debugging_tools() {
                 let _ = app.emit("security_issue", "🚨 ตรวจพบ Debugger หรือ Hacking Tools - แอปจะปิดทันที".to_string());
@@ -2971,7 +3096,7 @@ async fn h3a2r1t() -> Result<bool, String> {
                         let signature = format!("{:x}", hasher.finalize());
                         
                         let client = reqwest::Client::new();
-                        let url = format!("{}/heartbeat", L1C3NS3_S3RV3R);
+                        let url = format!("{}/heartbeat", license_server_url());
                         
                         if !url.starts_with("https://") {
                             println!("[SECURITY] Heartbeat server URL is not HTTPS!");
@@ -3034,6 +3159,11 @@ async fn h3a2r1t() -> Result<bool, String> {
 
 // Start heartbeat monitoring
 fn m0n1t0r(app: tauri::AppHandle) {
+    // Disable heartbeat enforcement in dev to avoid killing app before license entry
+    #[cfg(debug_assertions)]
+    {
+        return;
+    }
     if H3A2T_4CT1V3.load(Ordering::SeqCst) {
         return; // Already running
     }

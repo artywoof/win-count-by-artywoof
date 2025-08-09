@@ -4,8 +4,8 @@
   "version": "1.0.1",
   "identifier": "com.artywoof.wincount",
   "build": {
-    "beforeDevCommand": "bun run dev:vite",
-    "devUrl": "http://localhost:1421",
+    "beforeDevCommand": "powershell -NoProfile -Command Start-Process bun -ArgumentList 'run dev:server'; bun run dev:vite",
+    "devUrl": "http://localhost:1421/app",
     "beforeBuildCommand": "bun run build:frontend",
     "frontendDist": "../build"
   },
@@ -43,7 +43,7 @@
       "iconAsTemplate": false
     },
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:8765 https://github.com ws://localhost:1421; script-src 'self' 'wasm-unsafe-eval'",
       "capabilities": [
         "default"
       ]

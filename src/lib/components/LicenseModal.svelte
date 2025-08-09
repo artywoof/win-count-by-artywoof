@@ -119,13 +119,19 @@
   // --- ฟังก์ชัน Helper (เหมือนเดิม) ---
   async function fetchMachineId() {
     try {
-      const id = await invoke('get_machine_id');
+      const id = await invoke('m4c5h6n');
       machineIdForDisplay = id as string;
+      console.log('🖥️ Machine ID loaded:', machineIdForDisplay);
     } catch (e) {
       machineIdForDisplay = 'เกิดข้อผิดพลาด';
       console.error("Failed to get machine ID", e);
     }
   }
+
+  // โหลด Machine ID ทันทีเมื่อ component โหลด
+  onMount(() => {
+    fetchMachineId();
+  });
 
   function copyMachineId() {
     if (machineIdForDisplay && !machineIdForDisplay.includes('...')) {
@@ -160,28 +166,17 @@
       return;
     }
     try {
-      const machineId = await invoke('get_machine_id');
-      // ใช้ URL จาก Vercel ของอาร์ต (อย่าลืมเปลี่ยนถ้า URL ไม่ถูกต้อง)
-      const response = await fetch('https://win-count-by-artywoof.vercel.app/api/validate-license', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          license_key: currentKey.trim(),
-          machine_id: machineId
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        await invoke('save_license_key', { key: currentKey.trim() });
+      const machineId = await invoke('m4c5h6n');
+      const ok = await invoke('a1b2c3d4', { licenseKey: currentKey.trim(), machineId });
+      if (ok) {
+        await invoke('s4v3k3y', { key: currentKey.trim() });
         showInputMessage('🎉 License Key ถูกต้อง! ยินดีต้อนรับ!', 'success');
         setTimeout(() => {
           closeModal();
           onLicenseValid();
         }, 1500);
       } else {
-        showInputMessage('❌ ' + result.message, 'error');
+        showInputMessage('❌ License ไม่ถูกต้อง', 'error');
       }
     } catch (error) {
       console.error('❌ License validation failed:', error);

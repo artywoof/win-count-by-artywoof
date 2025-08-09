@@ -2,12 +2,14 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
-    // Code Obfuscation temporarily disabled for compilation
-    println!("⚠️  Code obfuscation disabled for debugging");
-    
-    // Skip obfuscation for now
-    // obfuscate_source_file("src/main.rs");
-    
+    // Enable light-weight obfuscation in release builds
+    #[cfg(not(debug_assertions))]
+    {
+        println!("🔒 Applying light obfuscation to main.rs");
+        // Note: keep this conservative to avoid breaking build
+        obfuscate_source_file("src/main.rs");
+    }
+
     println!("✅ Build script completed");
     tauri_build::build()
 }
