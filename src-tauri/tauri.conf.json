@@ -81,8 +81,6 @@
       "icons/icon.png",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../static"
-    ]
+    "resources": []
   }
 }

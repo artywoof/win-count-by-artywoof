@@ -42,6 +42,7 @@ rand = "0.8"
 aes-gcm = "0.10"
 aes = "0.8"
 getrandom = "0.2"
+rust-embed = "8.5"
 
 [profile.release]
 codegen-units = 1

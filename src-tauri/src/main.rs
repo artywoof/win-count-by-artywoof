@@ -8,6 +8,7 @@
 // compile_error!("Debug builds not allowed for production - use release build only");
 
 use serde::{Deserialize, Serialize};
+use rust_embed::RustEmbed;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -31,6 +32,11 @@ use std::fs::File;
 use std::io::{Read};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::atomic::AtomicBool;
+
+// Embedded static assets (overlay.html, /assets/*) compiled into the binary
+#[derive(RustEmbed)]
+#[folder = "../static"]
+struct EmbeddedAssets;
 
 // PromptPay module removed - using promptpay.io instead
 
@@ -2313,67 +2319,10 @@ fn start_http_server() {
                                     
                                     if request.starts_with("GET /overlay.html") {
                                         println!("📄 Serving overlay.html");
-                                        
-                                        // Read overlay.html file - try multiple paths
-                                        let overlay_paths = vec![
-                                            "../static/overlay.html",
-                                            "static/overlay.html",
-                                            "./static/overlay.html",
-                                            "../../static/overlay.html",
-                                            "resources/static/overlay.html",  // For MSI installed version
-                                            "C:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "C:\\Program Files\\Win Count by ArtYWoof\\static\\overlay.html",
-                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\static\\overlay.html",
-                                            "C:\\Program Files\\Win Count by ArtYWoof\\_up_\\static\\overlay.html",
-                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\_up_\\static\\overlay.html",
-                                            "C:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "D:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "D:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "D:\\Program Files\\Win Count by ArtYWoof\\static\\overlay.html",
-                                            "D:\\Program Files (x86)\\Win Count by ArtYWoof\\static\\overlay.html",
-                                            "E:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "E:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "E:\\Program Files\\Win Count by ArtYWoof\\static\\overlay.html",
-                                            "E:\\Program Files (x86)\\Win Count by ArtYWoof\\static\\overlay.html",
-                                            "F:\\Program Files\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "F:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static\\overlay.html",
-                                            "F:\\Program Files\\Win Count by ArtYWoof\\static\\overlay.html",
-                                            "F:\\Program Files (x86)\\Win Count by ArtYWoof\\static\\overlay.html",
-                                            // Add paths for executable directory
-                                            "C:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
-                                            "C:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
-                                            "D:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
-                                            "D:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
-                                            "E:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
-                                            "E:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
-                                            "F:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html",
-                                            "F:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static\\overlay.html"
-                                        ];
-                                        
-                                        println!("🔍 Searching for overlay.html in paths:");
-                                        for path in &overlay_paths {
-                                            println!("   📂 {}", path);
-                                        }
-                                        
-                                        let mut overlay_content = None;
-                                        for path in overlay_paths {
-                                            match std::fs::read_to_string(&path) {
-                                            Ok(content) => {
-                                                    println!("✅ Found overlay.html at: {}", path);
-                                                    println!("   📏 File size: {} bytes", content.len());
-                                                    overlay_content = Some(content);
-                                                    break;
-                                                }
-                                                Err(e) => {
-                                                    println!("❌ Failed to read overlay.html from {}: {}", path, e);
-                                                }
-                                            }
-                                        }
-                                        
-                                        match overlay_content {
-                                            Some(content) => {
+                                        // Serve embedded overlay.html from binary
+                                        match EmbeddedAssets::get("overlay.html") {
+                                            Some(file) => {
+                                                let content = String::from_utf8_lossy(file.data.as_ref());
                                                 let response = format!(
                                                     "HTTP/1.1 200 OK\r\n\
                                                     Content-Type: text/html; charset=utf-8\r\n\
@@ -2391,7 +2340,7 @@ fn start_http_server() {
                                                 }
                                             }
                                             None => {
-                                                println!("❌ Failed to read overlay.html from any path");
+                                                println!("❌ overlay.html not embedded");
                                                 let response = "HTTP/1.1 404 Not Found\r\n\r\n404 - File not found";
                                                 let _ = stream.write_all(response.as_bytes()).await;
                                             }
@@ -2402,67 +2351,10 @@ fn start_http_server() {
                                         let path_end = request.find(" HTTP").unwrap();
                                         let asset_path = &request[path_start..path_end];
                                         
-                                        // Try multiple paths for assets
-                                        let asset_paths = vec![
-                                            format!("../static{}", asset_path),
-                                            format!("static{}", asset_path),
-                                            format!("./static{}", asset_path),
-                                            format!("../../static{}", asset_path),
-                                            format!("resources/static{}", asset_path),  // For MSI installed version
-                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\static{}", asset_path),
-                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\static{}", asset_path),
-                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\_up_\\static{}", asset_path),
-                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\_up_\\static{}", asset_path),
-                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("D:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("D:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("D:\\Program Files\\Win Count by ArtYWoof\\static{}", asset_path),
-                                            format!("D:\\Program Files (x86)\\Win Count by ArtYWoof\\static{}", asset_path),
-                                            format!("E:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("E:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("E:\\Program Files\\Win Count by ArtYWoof\\static{}", asset_path),
-                                            format!("E:\\Program Files (x86)\\Win Count by ArtYWoof\\static{}", asset_path),
-                                            format!("F:\\Program Files\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("F:\\Program Files (x86)\\Win Count by ArtYWoof\\resources\\static{}", asset_path),
-                                            format!("F:\\Program Files\\Win Count by ArtYWoof\\static{}", asset_path),
-                                            format!("F:\\Program Files (x86)\\Win Count by ArtYWoof\\static{}", asset_path),
-                                            // Add paths for executable directory
-                                            format!("C:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
-                                            format!("C:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
-                                            format!("D:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
-                                            format!("D:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
-                                            format!("E:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
-                                            format!("E:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
-                                            format!("F:\\Program Files\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path),
-                                            format!("F:\\Program Files (x86)\\Win Count by ArtYWoof\\win-count-by-artywoof.exe\\static{}", asset_path)
-                                        ];
-                                        
-                                        println!("🔍 Searching for asset '{}' in paths:", asset_path);
-                                        for path in &asset_paths {
-                                            println!("   📂 {}", path);
-                                        }
-                                        
-                                        let mut asset_content = None;
-                                        
-                                        for path in asset_paths {
-                                            match std::fs::read(&path) {
-                                            Ok(content) => {
-                                                    println!("✅ Found asset at: {}", path);
-                                                    println!("   📏 File size: {} bytes", content.len());
-                                                    asset_content = Some(content);
-                                                    break;
-                                                }
-                                                Err(e) => {
-                                                    println!("❌ Failed to read asset from {}: {}", path, e);
-                                                }
-                                            }
-                                        }
-                                        
-                                        match asset_content {
-                                            Some(content) => {
+                                        // Serve embedded assets from binary
+                                        match EmbeddedAssets::get(&asset_path[1..]) { // strip leading '/'
+                                            Some(file) => {
+                                                let content = file.data;
                                                 let content_type = if asset_path.ends_with(".png") {
                                                     "image/png"
                                                 } else if asset_path.ends_with(".jpg") || asset_path.ends_with(".jpeg") {
@@ -2501,7 +2393,7 @@ fn start_http_server() {
                                                 }
                                             }
                                             None => {
-                                                println!("❌ Failed to read asset from any path: {}", asset_path);
+                                                println!("❌ Embedded asset not found: {}", asset_path);
                                                 let response = "HTTP/1.1 404 Not Found\r\n\r\n404 - Asset not found";
                                                 let _ = stream.write_all(response.as_bytes()).await;
                                             }
